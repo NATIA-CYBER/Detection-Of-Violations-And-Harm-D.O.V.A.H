@@ -13,7 +13,7 @@ Real-time, drift-aware security analytics:
 - Conda (Anaconda/Miniconda/Mamba), Python **3.11**
 - PostgreSQL **14+**
 - Git, Make (optional)
-- (Optional) Docker if you prefer a containerized DB
+- (Optional) Docker for a local DB
 
 ---
 
@@ -21,6 +21,7 @@ Real-time, drift-aware security analytics:
 ```bash
 conda env create -f environment.yml || conda env update -f environment.yml
 conda activate dovah
+conda config --set solver libmamba
 pre-commit install
 ```
 
@@ -42,7 +43,9 @@ docker run --name dovah-db -e POSTGRES_USER=dovah -e POSTGRES_PASSWORD=dovah \
 cp .env.example .env
 # Edit .env to set:
 # DATABASE_URL=postgresql://dovah:dovah@localhost:5432/dovah
-export $(grep -v '^#' .env | xargs)
+
+# Load env vars
+set -a; source .env; set +a
 
 # Migrations (one-time, idempotent)
 alembic upgrade head
@@ -83,25 +86,23 @@ python -m src.fusion.late_fusion
 
 ## 8) Evaluate (prints metrics incl. p95 latency)
 ```bash
-# If you have labels:
+# With labels
 python -m src.eval.run_eval \
   --pred data/out/pred.jsonl \
-  --labels data/labels/labels.jsonl
+  --labels data/labels/labels.jsonl \
+  --k 50
 
-# If you don't have labels yet, run without --labels to still see p95 latency & pipeline timing
-python -m src.eval.run_eval --pred data/out/pred.jsonl
+# Without labels (still reports p95 if available)
+python -m src.eval.run_eval --pred data/out/pred.jsonl --total-windows 10000
 ```
 
-Metrics reported:
+Metrics:
 - precision, recall, precision@k, FP/1k
 - p95_ms (end-to-end latency percentile)
 
 ## 9) Summarize & export evidence
 ```bash
-# Summarize a detection (ensure model credentials if using a cloud LLM)
 python -m src.genai.summarize_alert --id <DETECTION_ID> --out evidence/summary_<ID>.json
-
-# Export signed evidence pack (JSON/CSV + signatures)
 python -m src.integrations.export_json --out evidence/
 ```
 
@@ -115,24 +116,16 @@ pytest -q
 
 ## 11) Make targets (if you use Make)
 ```bash
-make env        # env + hooks
-make migrate    # alembic upgrade head
-make lint       # ruff, black --check, mypy
-make test      # pytest
-make audit     # scripts/audit_day1.sh (if present)
-make lock      # generate conda-lock from environment.yml
+make env
+make migrate
+make lint
+make test
+make audit
+make lock
 ```
 
 ## 12) Troubleshooting
-
-**DB not reachable / sqlalchemy.url missing**
-Export DATABASE_URL (see .env.example) and ensure Postgres is up (pg_isready).
-
-**Migrations complain about existing tables**
-The dev DB was bootstrapped previously; drop/recreate the DB or let Alembic manage it from scratch.
-
-**conda-lock errors**
-Run it from the base env or upgrade pydantic in the env executing conda-lock (>= 2.7).
-
-**No detections**
-Verify window_features has rows and baseline scorers produced outputs before running fusion.
+- DB not reachable / sqlalchemy.url missing — Load .env as shown and ensure Postgres is up (pg_isready).
+- Migrations complain about existing tables — Drop/recreate dev DB or let Alembic own schema from scratch.
+- conda-lock errors — Run it from the base env or upgrade pydantic (>= 2.7) in the env executing it.
+- No detections — Ensure window_features has rows and baselines produced outputs before running fusion.
