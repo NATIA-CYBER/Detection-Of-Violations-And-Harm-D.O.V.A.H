@@ -54,6 +54,8 @@ htmlcov/
 logs/
 data/
 !data/.gitkeep
+!tests/data/
+!tests/data/**/*
 
 # Model artifacts
 models/*.joblib

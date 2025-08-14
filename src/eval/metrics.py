@@ -38,7 +38,7 @@ class EvalMetrics:
                     d.ts as detection_time,
                     MIN(e.ts) as first_event_time
                 FROM detections d
-                JOIN events e ON d.session_id = e.session_id
+                JOIN window_features w ON d.window_id = w.id
                 WHERE d.ts BETWEEN :start_time AND :end_time
                 AND d.score >= :threshold
                 GROUP BY d.session_id, d.ts
@@ -77,7 +77,7 @@ class EvalMetrics:
                     MAX(d.score) as max_score,
                     bool_or(e.label = 'malicious') as is_malicious
                 FROM detections d
-                JOIN events e ON d.session_id = e.session_id
+                JOIN window_features w ON d.window_id = w.id
                 WHERE d.ts BETWEEN :start_time AND :end_time
                 GROUP BY d.session_id
             )
@@ -128,7 +128,7 @@ class EvalMetrics:
                     bool_or(e.label = 'malicious') as is_malicious,
                     ROW_NUMBER() OVER (ORDER BY d.score DESC) as rank
                 FROM detections d
-                JOIN events e ON d.session_id = e.session_id
+                JOIN window_features w ON d.window_id = w.id
                 WHERE d.ts BETWEEN :start_time AND :end_time
                 GROUP BY d.session_id, d.score
             )
@@ -182,7 +182,7 @@ class EvalMetrics:
                         WHERE d.score >= :threshold AND NOT e.label = 'malicious'
                     ) as false_positives
                 FROM detections d
-                JOIN events e ON d.session_id = e.session_id
+                JOIN window_features w ON d.window_id = w.id
                 WHERE d.ts BETWEEN :start_time AND :end_time
             )
             SELECT

@@ -42,25 +42,28 @@ class SessionScorer:
         query = text("""
             WITH session_windows AS (
                 SELECT 
-                    session_id,
-                    host,
-                    ts,
-                    score,
-                    COUNT(*) OVER (PARTITION BY session_id) as event_count
+                    d.session_id,
+                    d.ts,
+                    d.score,
+                    w.event_count,
+                    w.unique_components,
+                    w.error_ratio
                 FROM detections d
-                WHERE ts BETWEEN :start_time AND :end_time
-                AND source = 'iforest'
+                JOIN window_features w ON d.window_id = w.id
+                WHERE d.ts BETWEEN :start_time AND :end_time
+                AND d.source = 'iforest'
             )
             SELECT
                 session_id,
-                host,
                 MAX(ts) as last_seen,
                 AVG(score) as avg_score,
                 MAX(score) as max_score,
                 MIN(score) as min_score,
-                MAX(event_count) as total_events
+                SUM(event_count) as total_events,
+                AVG(unique_components) as avg_unique_components,
+                AVG(error_ratio) as avg_error_ratio
             FROM session_windows
-            GROUP BY session_id, host
+            GROUP BY session_id
             HAVING MAX(event_count) >= :min_events
         """)
         
@@ -97,10 +100,11 @@ class SessionScorer:
         cutoff = datetime.utcnow() - timedelta(seconds=self.config.max_score_age)
         
         query = text("""
-            SELECT DISTINCT session_id
-            FROM detections
-            WHERE ts >= :cutoff
-            AND source = 'iforest'
+            SELECT DISTINCT d.session_id
+            FROM detections d
+            JOIN window_features w ON d.window_id = w.id
+            WHERE d.ts >= :cutoff
+            AND d.source = 'iforest'
         """)
         
         try:
@@ -129,17 +133,20 @@ class SessionScorer:
         """
         query = text("""
             SELECT
-                host,
-                MIN(ts) as first_seen,
-                MAX(ts) as last_seen,
-                COUNT(*) as event_count,
-                AVG(score) as avg_score,
-                MAX(score) as max_score,
-                MIN(score) as min_score
-            FROM detections
-            WHERE session_id = :session_id
-            AND source = 'iforest'
-            GROUP BY host
+                MIN(d.ts) as first_seen,
+                MAX(d.ts) as last_seen,
+                SUM(w.event_count) as total_events,
+                AVG(d.score) as avg_score,
+                MAX(d.score) as max_score,
+                MIN(d.score) as min_score,
+                AVG(w.unique_components) as avg_unique_components,
+                AVG(w.error_ratio) as avg_error_ratio,
+                AVG(w.template_entropy) as avg_template_entropy,
+                AVG(w.component_entropy) as avg_component_entropy
+            FROM detections d
+            JOIN window_features w ON d.window_id = w.id
+            WHERE d.session_id = :session_id
+            AND d.source = 'iforest'
         """)
         
         try:

@@ -40,8 +40,9 @@ class LateFusion:
                     i.epss_score,
                     CASE WHEN k.cve_id IS NOT NULL THEN 1.0 ELSE 0.0 END as kev_score
                 FROM detections d
-                JOIN intel i ON d.host = i.affected_host
-                LEFT JOIN kev k ON i.cve_id = k.cve_id
+                JOIN window_features w ON d.window_id = w.id
+                LEFT JOIN epss e ON d.cve_id = e.cve_id
+                LEFT JOIN kev k ON d.cve_id = k.cve_id
                 WHERE d.session_id = :session_id
                 AND d.source = 'iforest'
             )
