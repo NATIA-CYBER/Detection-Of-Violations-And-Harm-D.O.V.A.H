@@ -40,10 +40,14 @@ dynaconf = "^3.2.0"
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"
 pytest-cov = "^4.1.0"
+pytest-mock = "^3.11.1"
+pytest-asyncio = "^0.21.1"
+pytest-timeout = "^2.1.0"
 black = "^23.7.0"
 ruff = "^0.0.287"
 mypy = "^1.5.0"
 pre-commit = "^3.3.3"
+factory-boy = "^3.3.0"  # For test data generation
 
 [build-system]
 requires = ["poetry-core"]
