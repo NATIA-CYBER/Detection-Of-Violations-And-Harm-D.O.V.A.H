@@ -1,8 +1,4 @@
-"""Late fusion logic for combining multiple detection signals.
-
-Combines anomaly scores with other signals like EPSS and KEV data
-to produce final risk scores.
-"""
+"""Risk score fusion logic"""
 import logging
 from typing import Dict, List, Optional
 from datetime import datetime
@@ -20,7 +16,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class FusionConfig(BaseModel):
-    """Late fusion configuration."""
     weights: Dict[str, float] = {
         'anomaly_score': 0.6,
         'epss_score': 0.3,
@@ -30,8 +25,6 @@ class FusionConfig(BaseModel):
     db_url: str = os.getenv('POSTGRES_URL', 'postgresql://dovah:dovah@localhost:5432/dovah')
 
 class LateFusion:
-    """Combines multiple detection signals."""
-    
     def __init__(self, config: Optional[FusionConfig] = None):
         self.config = config or FusionConfig()
         self.engine = create_engine(self.config.db_url)

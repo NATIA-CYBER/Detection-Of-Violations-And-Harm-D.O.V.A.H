@@ -15,7 +15,6 @@ from jsonschema import validate, ValidationError
 from models.anomaly.iforest import IForestModel, IForestConfig
 
 class SchemaValidator:
-    """Validates log events against schema."""
     def __init__(self, schema_path: str = None):
         if schema_path is None:
             schema_path = os.path.join(
@@ -35,7 +34,6 @@ class SchemaValidator:
             return False
 
 class StreamingAdapter:
-    """Cloud-agnostic streaming source adapter."""
     def __init__(self, source_type: str = 'kinesis'):
         self.source_type = source_type
         self.env = StreamExecutionEnvironment.get_execution_environment()
@@ -128,8 +126,7 @@ class WindowFeatures:
             })
 
 def main():
-    """Main streaming job entry point."""
-    # Initialize streaming adapter (AWS Kinesis default)
+    adapter = StreamingAdapter(source_type=os.getenv('STREAM_SOURCE_TYPE', 'kinesis'))
     adapter = StreamingAdapter(source_type=os.getenv('STREAM_SOURCE_TYPE', 'kinesis'))
     
     # Initialize anomaly detector
