@@ -42,7 +42,7 @@ docker run --name dovah-db -e POSTGRES_USER=dovah -e POSTGRES_PASSWORD=dovah \
 # App config
 cp .env.example .env
 # Edit .env to set:
-# DATABASE_URL=postgresql://dovah:dovah@localhost:5432/dovah
+# DATABASE_URL=postgresql+psycopg://dovah:dovah@localhost:5432/dovah
 
 # Load env vars (bash/zsh)
 set -a; source .env; set +a

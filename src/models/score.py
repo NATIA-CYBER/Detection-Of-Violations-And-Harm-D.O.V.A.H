@@ -118,17 +118,11 @@ class SessionScorer:
             logger.error(f"Error getting active sessions: {e}")
             return []
     
-    def get_session_details(self, session_id: str) -> Optional[Dict]:
-        """Get detailed scoring info for a specific session.
+    def get_session_details(self, session_id: str) -> Dict:
+        """Get all details for a session including window features.
         
-        Returns:
-            Dict with session details including:
-            - host
-            - first_seen
-            - last_seen  
-            - event_count
-            - avg_score
-            - max_score
+        Args:
+            session_id: Session ID to lookup
             - min_score
         """
         query = text("""

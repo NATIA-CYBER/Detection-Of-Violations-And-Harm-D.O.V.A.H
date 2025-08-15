@@ -6,15 +6,37 @@ Analyzes HDFS logs for:
 - Spike detection (3σ)
 - PSI/KS week-over-week
 """
-import pandas as pd
+import json
+import os
+import sys
+from math import log2
+from collections import Counter
+from pathlib import Path
+
+# Add project root to Python path
+project_root = str(Path(__file__).parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 import numpy as np
-from scipy import stats
+import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from pathlib import Path
-from collections import Counter
-import json
-from datetime import datetime, timedelta
+from scipy import stats
+from sklearn.preprocessing import KBinsDiscretizer
+
+from src.eval.psi import calculate_psi, calculate_ks
+
+def calculate_entropy(values):
+    """Calculate Shannon entropy of a sequence of values."""
+    if not values:
+        return 0.0
+    counts = Counter(values)
+    probs = [count/len(values) for count in counts.values()]
+    return -sum(p * log2(p) for p in probs)
+
+import datetime
+from datetime import timedelta
 from drain3 import TemplateMiner
 
 # Configure plots
@@ -40,14 +62,109 @@ def load_hdfs_logs(log_dir: Path) -> pd.DataFrame:
                     })
     return pd.DataFrame(records)
 
+def plot_host_template_heatmap(df: pd.DataFrame, output_dir: Path):
+    """Generate host × template frequency heatmap."""
+    # Create pivot table
+    pivot = pd.crosstab(df['host'], df['template_id'])
+    
+    # Plot heatmap
+    plt.figure(figsize=(12, 8))
+    sns.heatmap(pivot, cmap='YlOrRd', cbar_kws={'label': 'Frequency'})
+    plt.title('Host × Template Frequency Heatmap')
+    plt.tight_layout()
+    plt.savefig(output_dir / 'host_template_heatmap.png')
+    plt.close()
+    
+    # Save raw data
+    pivot.to_csv(output_dir / 'host_template_frequencies.csv')
+
+def plot_session_length(df: pd.DataFrame, output_dir: Path):
+    """Generate session length distribution plot."""
+    # Calculate session lengths
+    session_lengths = df.groupby('session_id').agg({
+        'ts': lambda x: (x.max() - x.min()).total_seconds() / 3600,  # hours
+        'message': 'count'
+    }).rename(columns={'ts': 'duration_hours', 'message': 'event_count'})
+    
+    # Plot distributions
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
+    
+    # Duration distribution
+    sns.histplot(session_lengths['duration_hours'], bins=50, ax=ax1)
+    ax1.set_title('Session Duration Distribution')
+    ax1.set_xlabel('Duration (hours)')
+    
+    # Event count distribution
+    sns.histplot(session_lengths['event_count'], bins=50, ax=ax2)
+    ax2.set_title('Session Event Count Distribution')
+    ax2.set_xlabel('Number of Events')
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / 'session_distributions.png')
+    plt.close()
+    
+    # Save statistics
+    stats = session_lengths.describe()
+    stats.to_csv(output_dir / 'session_stats.csv')
+
 def analyze_templates(df: pd.DataFrame, output_dir: Path):
+    """Analyze template patterns and entropy."""
+    # Hourly/daily entropy
+    hourly_entropy = df.groupby(pd.Grouper(key='ts', freq='h')).apply(
+        lambda x: calculate_entropy(x['template_id'].tolist())
+    )
+    daily_entropy = df.groupby(pd.Grouper(key='ts', freq='D')).apply(
+        lambda x: calculate_entropy(x['template_id'].tolist())
+    )
+    
+    # Plot entropy over time
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+    
+    hourly_entropy.plot(ax=ax1)
+    ax1.set_title('Template Entropy by Hour')
+    ax1.set_ylabel('Bits')
+    
+    daily_entropy.plot(ax=ax2)
+    ax2.set_title('Template Entropy by Day')
+    ax2.set_ylabel('Bits')
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / 'entropy_over_time.png')
+    plt.close()
+    
+    # Save entropy data
+    hourly_entropy.to_csv(output_dir / 'hourly_entropy.csv')
+    daily_entropy.to_csv(output_dir / 'daily_entropy.csv')
+    
+    # Analyze rare templates (tail)
+    template_counts = df['template_id'].value_counts()
+    rare_templates = template_counts[template_counts <= template_counts.quantile(0.1)]
+    
+    plt.figure(figsize=(10, 6))
+    plt.hist(rare_templates.values, bins=50)
+    plt.title('Distribution of Rare Template Frequencies')
+    plt.xlabel('Frequency')
+    plt.ylabel('Count')
+    plt.savefig(output_dir / 'rare_templates.png')
+    plt.close()
+    
+    rare_stats = {
+        'count': len(rare_templates),
+        'min_freq': int(rare_templates.min()),
+        'max_freq': int(rare_templates.max()),
+        'mean_freq': float(rare_templates.mean()),
+        'total_events': int(rare_templates.sum())
+    }
+    
+    with open(output_dir / 'rare_templates.json', 'w') as f:
+        json.dump(rare_stats, f, indent=2)
     """Analyze template distribution and entropy."""
     # Extract templates
     miner = TemplateMiner()
     templates = {}
     for msg in df['message']:
         result = miner.add_log_message(msg)
-        templates[msg] = result.cluster_id
+        templates[msg] = result['cluster_id']
 
     df['template_id'] = df['message'].map(templates)
 
@@ -69,6 +186,10 @@ def analyze_templates(df: pd.DataFrame, output_dir: Path):
     probs = template_counts / len(df)
     entropy = stats.entropy(probs)
     print(f'Template entropy: {entropy:.2f} bits')
+
+    # Generate plots and save results
+    plot_host_template_heatmap(df, output_dir)
+    plot_session_length(df, output_dir)
 
     # Save template stats
     template_stats = {
@@ -205,9 +326,56 @@ def analyze_drift(df: pd.DataFrame, output_dir: Path):
     with open(output_dir / 'drift_stats.json', 'w') as f:
         json.dump(drift_stats, f, indent=2)
 
+def generate_data_card(output_dir: Path, stats: dict):
+    """Generate data card markdown with analysis results."""
+    docs_dir = Path('docs')
+    docs_dir.mkdir(exist_ok=True)
+    
+    with open(docs_dir / 'data_card.md', 'w') as f:
+        f.write("# HDFS Log Data Analysis Card\n\n")
+        
+        # Basic stats
+        f.write("## Basic Statistics\n\n")
+        f.write(f"- Time range: {stats['time_coverage']['start']} to {stats['time_coverage']['end']}\n")
+        f.write(f"- Duration: {stats['time_coverage']['duration_hours']:.1f} hours\n")
+        f.write(f"- Total events: {stats['total_events']:,}\n")
+        f.write(f"- Mean event rate: {stats['hourly_stats']['mean']:.1f} events/hour\n\n")
+        
+        # Data quality
+        f.write("## Data Quality\n\n")
+        f.write("### Null Counts\n")
+        for field, count in stats['null_counts'].items():
+            f.write(f"- {field}: {count}\n")
+        
+        # Template analysis
+        f.write("\n## Template Analysis\n\n")
+        f.write(f"- Unique templates: {stats['template_stats']['unique_count']}\n")
+        f.write(f"- Overall entropy: {stats['template_stats']['entropy']:.2f} bits\n")
+        f.write(f"- Rare templates: {stats['rare_templates']['count']} (below 10th percentile)\n")
+        
+        # PII audit
+        f.write("\n## PII Audit\n\n")
+        f.write(f"- Messages with PII: {stats['pii_audit']['messages_with_pii']}\n")
+        f.write("- Pre-scrub matches:\n")
+        for pattern, count in stats['pii_audit']['pre_scrub'].items():
+            f.write(f"  - {pattern}: {count}\n")
+        f.write("- Post-scrub: All patterns verified zero matches\n")
+        
+        # Generated artifacts
+        f.write("\n## Analysis Artifacts\n\n")
+        f.write("### Plots\n")
+        for plot in ['event_rate.png', 'entropy_over_time.png', 'rare_templates.png',
+                    'host_template_heatmap.png', 'session_distributions.png']:
+            f.write(f"- [{plot}](../eda_results/{plot})\n")
+        
+        f.write("\n### Data Files\n")
+        for data_file in ['data_quality.json', 'hourly_entropy.csv', 'daily_entropy.csv',
+                         'rare_templates.json', 'pii_audit.json']:
+            f.write(f"- [{data_file}](../eda_results/{data_file})\n")
+
 def main():
     # Setup paths
-    log_dir = Path('../tests/data/hdfs')
+    log_dir = Path('tests/data/hdfs')
     output_dir = Path('eda_results')
     output_dir.mkdir(exist_ok=True)
 

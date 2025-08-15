@@ -6,7 +6,7 @@ import numpy as np
 
 # Enhanced CVE regex to catch edge cases
 CVE_PATTERN = re.compile(
-    r"\b(?:CVE-\d{4}-(?:\d{4,}|\d{4,7})|cve-\d{4}-\d{4,7})\b",
+    r"\b(?:CVE-\d{4}-\d{4,7})\b",  # Only match CVE-YYYY-NNNNNNN format (4-7 digits)
     re.IGNORECASE
 )
 
@@ -24,22 +24,27 @@ def extract_cves(df: pd.DataFrame, text_col: str = "message") -> pd.DataFrame:
         return pd.DataFrame(columns=["cve", "context"])
     def _extract_row(row: pd.Series) -> List[Dict]:
         text = str(row.get(text_col, ""))
-        cves = CVE_PATTERN.findall(text)
-        if not cves:
+        # First find all matches case-insensitively
+        matches = list(CVE_PATTERN.finditer(text.upper()))
+        if not matches:
             return []
-            
-        # Normalize CVE format
-        cves = [cve.upper() for cve in cves]
         
-        # Get surrounding context
+        # Extract CVEs with context
         contexts = []
-        for cve in cves:
-            idx = text.upper().find(cve)
-            start = max(0, idx - 50)
-            end = min(len(text), idx + len(cve) + 50)
+        for match in matches:
+            cve = match.group(0)
+            # Find the original case in the text
+            start_idx = match.start()
+            end_idx = match.end()
+            original_cve = text[start_idx:end_idx]
+            
+            # Extract context window
+            start = max(0, start_idx - 50)
+            end = min(len(text), end_idx + 50)
             context = text[start:end].strip()
+            
             contexts.append({
-                "cve": cve,
+                "cve": cve,  # Already uppercase from searching uppercase text
                 "context": context,
                 **{k:v for k,v in row.items() if k != text_col}
             })

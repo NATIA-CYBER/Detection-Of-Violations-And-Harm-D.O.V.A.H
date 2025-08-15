@@ -5,6 +5,10 @@ import os
 from math import log2
 from pathlib import Path
 
+from src.ingest.hdfs_loader import HDFSLoader
+from src.enrich.cve_context import CVEEnricher
+from src.enrich.nvd_fetch import NVDEnricher
+
 from pyflink.common import Time, Types, Row
 from pyflink.datastream import StreamExecutionEnvironment, TimeCharacteristic
 from pyflink.datastream.connectors import FlinkKafkaConsumer, KinesisStreamSource, JdbcSink
@@ -40,14 +44,51 @@ class StreamingAdapter:
         self.env.set_stream_time_characteristic(TimeCharacteristic.EventTime)
         self.env.set_parallelism(int(os.getenv('FLINK_PARALLELISM', '2')))
         self.schema_validator = SchemaValidator()
+        
+        # Initialize PII scrubber and enrichers
+        self.hdfs_loader = HDFSLoader()
+        self.cve_enricher = CVEEnricher(session=None)  # Session injected later
+        self.nvd_enricher = NVDEnricher()
 
     def validate_and_deserialize(self, raw_data: bytes) -> Optional[Dict[str, Any]]:
-        """Deserialize and validate incoming data."""
+        """Deserialize, validate, scrub PII, and enrich with CVE context."""
         try:
+            # Parse and validate
             event = json.loads(raw_data.decode('utf-8'))
-            if self.schema_validator.validate_event(event):
-                return event
-            return None
+            if not self.schema_validator.validate_event(event):
+                return None
+                
+            # Scrub PII from message
+            event['message'] = self.hdfs_loader.scrub_pii(event['message'])
+            
+            # Extract and enrich CVEs
+            cve_context = self.hdfs_loader.extract_cve_context(event['message'])
+            if cve_context['cves']:
+                # Enrich with CVE details
+                nvd_details = self.nvd_enricher.enrich_multiple(cve_context['cves'])
+                enriched_cves = self.cve_enricher.enrich_multiple([
+                    {
+                        'cve_id': cve,
+                        'component': cve_context.get('components', ['Default'])[0],
+                        'version': next(iter(cve_context.get('versions', [])), None)
+                    }
+                    for cve in cve_context['cves']
+                ])
+                
+                # Add enrichment to event
+                event['cve_context'] = {
+                    'cves': cve_context['cves'],
+                    'components': cve_context['components'],
+                    'versions': cve_context['versions'],
+                    'risk_terms': cve_context['risk_terms'],
+                    'component_risk': cve_context['component_risk'],
+                    'nvd_details': nvd_details,
+                    'enriched_cves': [
+                        cve.__dict__ for cve in enriched_cves
+                    ]
+                }
+            
+            return event
         except (json.JSONDecodeError, UnicodeDecodeError):
             return None
 

@@ -1,0 +1,10 @@
+2025-08-15T14:30:00Z	host1	DataNode	INFO	Block blk_1234 received from /10.0.1.2:50010
+2025-08-15T14:30:01Z	host1	DataNode	INFO	PacketResponder: BP-123 blk_1234, type=LAST_IN_PIPELINE, datanode=10.0.1.3:50010
+2025-08-15T14:30:02Z	host2	NameNode	WARN	Failed to complete block allocation in 5000ms
+2025-08-15T14:30:03Z	host2	DataNode	ERROR	Failed to replicate blk_5678 to /10.0.1.4:50010
+2025-08-15T14:31:00Z	host1	DataNode	INFO	Receiving block blk_5678 src: /10.0.1.5:50010
+2025-08-15T14:31:01Z	host3	NameNode	INFO	Safe mode is OFF
+2025-08-15T14:31:02Z	host3	DataNode	INFO	Served block blk_9012 to /10.0.1.6:50010
+2025-08-15T14:31:03Z	host2	DataNode	WARN	Slow BlockReceiver write data to disk cost: 2100ms
+2025-08-15T14:32:00Z	host1	DataNode	ERROR	Block blk_3456 is corrupt
+2025-08-15T14:32:01Z	host3	NameNode	INFO	Starting checkpoint for transaction ID 12345

@@ -15,6 +15,8 @@ from datetime import timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
+import numpy as np
+
 import pandas as pd
 from drain3 import TemplateMiner
 from pydantic import BaseModel, Field
@@ -55,22 +57,52 @@ class HDFSLoader:
         # RFC5322 email
         "email": re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"),
         # API keys, tokens (common formats)
-        "token": re.compile(r"(?:key|token|api[_-]?key|access[_-]?token)[\s:=]+[\"]*([\w\-\.]{32,})[\"]?"),
+        "token": re.compile(r"(?i)(?:key|token|api[_-]?key)[_-]?(?:id)?\s*[=:]\s*[A-Za-z0-9]{16,}"),
         # AWS-style secrets
-        "aws_secret": re.compile(r"(?:aws)?_?(?:secret|access)_?key\s*[:=]\s*[\"]*([A-Za-z0-9/+=]{40})[\"]?"),
+        "aws_secret": re.compile(r"(?i)aws[_-]?(?:secret|key)[_-]?(?:id|access)?[_-]?(?:key)?\s*[=:]\s*[A-Za-z0-9/+=]{20,}"),
         # Password in config/logs
-        "password": re.compile(r"(?:password|passwd|pwd)\s*[:=]\s*[\"]*([^\"\s]+)[\"]?"),
+        "password": re.compile(r"(?i)pass(?:word)?[_-]?(?:key)?\s*[=:]\s*\S+"),
         # Private keys
-        "private_key": re.compile(r"-----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY-----[^-]*-----END\s+(?:RSA\s+)?PRIVATE\s+KEY-----"),
+        "private_key": re.compile(r"-----BEGIN (?:RSA )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA )?PRIVATE KEY-----"),
         # IP addresses (optional)
         "ip": re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
     }
     
-    # CVE pattern (CVE-YYYY-NNNNN[NN])
-    CVE_PATTERN = re.compile(r"CVE-\d{4}-\d{4,7}", re.IGNORECASE)
+    # Advanced CVE patterns
+    CVE_PATTERNS = {
+        # Basic CVE format
+        'cve': re.compile(r"CVE-\d{4}-\d{4,7}", re.IGNORECASE),
+        
+        # Version-specific patterns
+        'hadoop_ver': re.compile(r"hadoop-([0-9]+\.[0-9]+\.[0-9]+)", re.IGNORECASE),
+        'hdfs_ver': re.compile(r"hdfs-([0-9]+\.[0-9]+\.[0-9]+)", re.IGNORECASE),
+        
+        # Component patterns
+        'namenode': re.compile(r"NameNode|name\s*node", re.IGNORECASE),
+        'datanode': re.compile(r"DataNode|data\s*node", re.IGNORECASE),
+        'journalnode': re.compile(r"JournalNode|journal\s*node", re.IGNORECASE),
+        
+        # Common vulnerability keywords
+        'vuln_terms': re.compile(r"vulnerability|exploit|overflow|injection|bypass", re.IGNORECASE)
+    }
     
-    def __init__(self):
-        # Get HMAC key from environment
+    # Component risk weights (used for scoring)
+    COMPONENT_RISK_WEIGHTS = {
+        'NameNode': 1.0,  # Critical - controls filesystem metadata
+        'DataNode': 0.8,  # High - stores actual data
+        'JournalNode': 0.7,  # Medium-high - HA metadata
+        'ResourceManager': 0.6,  # Medium - YARN scheduling
+        'NodeManager': 0.5,  # Medium-low - YARN execution
+        'Default': 0.3  # Low - other components
+    }
+    
+    def __init__(self, tenant_id: str = "default"):
+        """Initialize loader with tenant-specific HMAC key.
+        
+        Args:
+            tenant_id: Unique tenant identifier for salt
+        """
+        # Get base HMAC key from environment
         hmac_key_hex = os.getenv("DOVAH_HMAC_KEY")
         if not hmac_key_hex:
             raise ValueError(
@@ -80,7 +112,12 @@ class HDFSLoader:
         
         try:
             # Convert hex to bytes
-            self.hmac_key = bytes.fromhex(hmac_key_hex)
+            base_key = bytes.fromhex(hmac_key_hex)
+            
+            # Create tenant-specific key by combining base key with tenant salt
+            tenant_salt = hashlib.sha256(tenant_id.encode()).digest()
+            self.hmac_key = hmac.new(base_key, tenant_salt, hashlib.sha256).digest()
+            
         except ValueError as e:
             raise ValueError(
                 "DOVAH_HMAC_KEY must be a valid 64-character hex string "
@@ -90,7 +127,7 @@ class HDFSLoader:
         # Get database URL from environment
         self.db_url = os.getenv(
             "DOVAH_DB_URL",
-            "postgresql://dovah:dovah@localhost:5432/dovah"
+            "postgresql+psycopg://dovah:dovah@localhost:5432/dovah"
         )
         self.engine = create_engine(self.db_url)
         
@@ -99,20 +136,45 @@ class HDFSLoader:
         with open(schema_file) as f:
             self.schema = json.load(f)
             
-        # Initialize template miner
-        self.template_miner = TemplateMiner()
+        # Initialize template miner with drain3.ini config
+        config_file = Path(__file__).parent.parent.parent / "drain3.ini"
+        self.template_miner = TemplateMiner(config_file)
         self._load_template_cache()
+        
+        # Initialize template stats
+        self.template_counts = defaultdict(int)
+        self.template_last_seen = {}
+        self.total_events = 0
         
         # Deduplication set for this batch
         self.seen_events: Set[str] = set()
         
-        # Host clock skew tracking
+        # Host clock skew and latency tracking
         self.host_offsets: Dict[str, float] = defaultdict(float)
         self.host_ts_counts: Dict[str, int] = defaultdict(int)
+        
+        # Rolling window of latencies for P95 tracking
+        self.latency_window_size = 1000  # Keep last 1000 events
+        self.latencies: List[float] = []
+        self.p95_latency: float = 0.0
+        
+        # Get latency SLO from environment
+        self.latency_slo_ms = float(os.getenv("LATENCY_SLO_MS", "2000"))  # Default 2s
     
-    def pseudonymize(self, value: str) -> str:
-        """Create HMAC-SHA256 pseudonym for PII."""
-        h = hmac.new(self.hmac_key, value.encode(), hashlib.sha256)
+    def pseudonymize(self, value: str, context: str = "") -> str:
+        """Create HMAC-SHA256 pseudonym for PII with optional context.
+        
+        Args:
+            value: Value to pseudonymize
+            context: Optional context string (e.g. field name) to prevent
+                    cross-field pseudonym reuse
+        """
+        if not value:
+            return value
+            
+        # Add context to prevent cross-field pseudonym reuse
+        data = f"{context}:{value}" if context else value
+        h = hmac.new(self.hmac_key, data.encode(), hashlib.sha256)
         return h.hexdigest()
     
     def scrub_pii(self, text: str) -> str:
@@ -176,44 +238,140 @@ class HDFSLoader:
                 f.write("\n")
     
     def _normalize_timestamp(self, ts_str: str, host: str) -> datetime.datetime:
-        """Normalize timestamp to UTC with clock skew correction."""
+        """Normalize timestamp to UTC RFC3339 with clock skew correction."""
         match = self.TS_PATTERN.match(ts_str)
         if not match:
             raise ValueError(f"Invalid timestamp format: {ts_str}")
             
         # Parse components
         components = match.groupdict()
+        
+        # Ensure subsecond precision is exactly 6 digits (microseconds)
         subsec = components.get("subsec", "0").ljust(6, "0")[:6]
         
-        # Create UTC datetime
-        ts = datetime.datetime(
+        # Parse timezone if present, default to UTC
+        tz_str = match.group().split()[-1] if ' ' in match.group() else match.group()[-6:]
+        if tz_str == 'Z':
+            tz = timezone.utc
+        elif '+' in tz_str or '-' in tz_str:
+            # Convert ±HH:MM to timezone
+            sign = 1 if '+' in tz_str else -1
+            hours, minutes = map(int, tz_str.replace(':', '')[1:].split())
+            offset = sign * (hours * 3600 + minutes * 60)
+            tz = datetime.timezone(datetime.timedelta(seconds=offset))
+        else:
+            tz = timezone.utc
+            
+        # Create datetime in source timezone
+        dt = datetime.datetime(
             int(components["year"]), int(components["month"]), 
             int(components["day"]), int(components["hour"]),
-            int(components["minute"]), int(components["second"]),
-            int(subsec), tzinfo=timezone.utc
+            int(components["minute"]), 
+            int(components["second"]), 
+            int(subsec), 
+            tzinfo=tz
         )
         
-        # Update host clock skew
+        # Convert to UTC
+        dt = dt.astimezone(timezone.utc)
+        
         now = datetime.datetime.now(timezone.utc)
-        offset = (now - ts).total_seconds()
+        latency_ms = (now - dt).total_seconds() * 1000
         
-        n = self.host_ts_counts[host]
-        self.host_offsets[host] = (
-            (n * self.host_offsets[host] + offset) / (n + 1)
-        )
-        self.host_ts_counts[host] += 1
+        # Update rolling latency window
+        self.latencies.append(latency_ms)
+        if len(self.latencies) > self.latency_window_size:
+            self.latencies.pop(0)
         
-        # Apply correction if significant skew
-        if abs(self.host_offsets[host]) > 1:
-            ts += datetime.timedelta(seconds=self.host_offsets[host])
-            
-        return ts
+        # Calculate P95 latency with minimum sample size
+        if len(self.latencies) >= 20:
+            self.p95_latency = float(np.percentile(self.latencies, 95))
+            if self.p95_latency > self.latency_slo_ms:
+                logging.warning(f"P95 latency {self.p95_latency:.1f}ms exceeds SLO {self.latency_slo_ms}ms")
+        
+        # Exponential moving average for clock skew
+        alpha = 0.1  # Smoothing factor
+        offset = latency_ms / 1000
+        if host not in self.host_offsets:
+            self.host_offsets[host] = offset
+        else:
+            self.host_offsets[host] = alpha * offset + (1 - alpha) * self.host_offsets[host]
+        
+        # Dynamic skew threshold based on P95
+        skew_threshold = max(1.0, self.p95_latency / 2000)
+        if abs(self.host_offsets[host]) > skew_threshold:
+            dt += datetime.timedelta(seconds=self.host_offsets[host])
+            logging.info(f"Corrected {abs(self.host_offsets[host]):.1f}s clock skew for host {host}")
+        
+        return dt
     
-    def _compute_event_hash(self, ts: datetime.datetime, host: str, msg: str) -> str:
-        """Compute deduplication hash for event."""
-        return hashlib.sha256(
-            f"{ts.isoformat()}|{host}|{msg}".encode()
-        ).hexdigest()
+    def extract_cve_context(self, msg: str) -> dict:
+        """Extract CVE and context information from message.
+        
+        Returns:
+            dict: CVE context including:
+                - cves: List of CVE IDs
+                - versions: List of version strings
+                - components: List of affected components
+                - risk_terms: List of vulnerability terms
+                - component_risk: Float risk score based on components
+        """
+        context = {
+            'cves': [],
+            'versions': [],
+            'components': [],
+            'risk_terms': [],
+            'component_risk': self.COMPONENT_RISK_WEIGHTS['Default']
+        }
+        
+        # Extract CVEs
+        if cves := self.CVE_PATTERNS['cve'].findall(msg):
+            context['cves'] = cves
+            
+        # Extract versions
+        for pattern in ['hadoop_ver', 'hdfs_ver']:
+            if versions := self.CVE_PATTERNS[pattern].findall(msg):
+                context['versions'].extend(versions)
+                
+        # Extract components and calculate risk
+        max_risk = self.COMPONENT_RISK_WEIGHTS['Default']
+        for comp, pattern in [
+            ('NameNode', 'namenode'),
+            ('DataNode', 'datanode'),
+            ('JournalNode', 'journalnode')
+        ]:
+            if self.CVE_PATTERNS[pattern].search(msg):
+                context['components'].append(comp)
+                max_risk = max(max_risk, self.COMPONENT_RISK_WEIGHTS[comp])
+        context['component_risk'] = max_risk
+        
+        # Extract vulnerability terms
+        if terms := self.CVE_PATTERNS['vuln_terms'].findall(msg):
+            context['risk_terms'] = terms
+            
+        return context
+
+    def _compute_dedupe_key(self, ts: datetime.datetime, host: str, msg: str, proc: str = '') -> str:
+        """Generate deduplication key from event fields.
+        
+        Args:
+            ts: Event timestamp
+            host: Source host
+            msg: Raw message
+            proc: Optional process name for better uniqueness
+            
+        Returns:
+            SHA-256 hex digest
+        """
+        h = hashlib.sha256()
+        # Use millisecond precision for timestamp
+        h.update(str(int(ts.timestamp() * 1000)).encode())
+        # Add process name for better uniqueness
+        h.update(proc.encode())
+        h.update(host.encode())
+        # Strip whitespace from message to normalize
+        h.update(msg.strip().encode())
+        return h.hexdigest()
     
     def parse_log_line(self, line: str) -> Optional[Dict]:
         """Parse raw log line into structured format."""
@@ -239,10 +397,15 @@ class HDFSLoader:
             template_id = template_result.cluster_id
             
             # Compute deduplication hash
-            event_hash = self._compute_event_hash(ts, host, msg)
+            event_hash = self._compute_dedupe_key(ts, host, msg)
             if event_hash in self.seen_events:
                 return None
             self.seen_events.add(event_hash)
+            
+            # Update template statistics
+            self.template_counts[template_id] += 1
+            self.template_last_seen[template_id] = ts
+            self.total_events += 1
             
             # Scrub PII from message
             scrubbed_msg = self.scrub_pii(msg)
