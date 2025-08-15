@@ -1,7 +1,14 @@
 """Pseudonymization utilities with HMAC-SHA256."""
 import hmac
 import hashlib
-from typing import Optional
+from typing import Optional, Dict, Pattern
+
+def pseudonymize(value: str, salt: bytes = b'dovah-salt') -> str:
+    """Generate stable HMAC-SHA256 pseudonym for a value."""
+    if not value:
+        return ''
+    h = hmac.new(salt, value.encode(), hashlib.sha256)
+    return h.hexdigest()[:16]
 
 def hmac_sha256_hex(value: str, tenant_salt: bytes) -> str:
     """Create HMAC-SHA256 hex digest with tenant-specific salt.

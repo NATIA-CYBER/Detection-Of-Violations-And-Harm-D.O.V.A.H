@@ -21,6 +21,12 @@
   - Private keys
   - IP addresses (optional)
 
+## Transforms
+- UTC normalization with clock-skew correction
+- Template extraction via Drain3
+- Deduplication using SHA256(ts_ms|host|msg)
+- Sessionization: Groups events by host×user×5min time bucket to track related activity sequences
+
 ## Known Issues
 - Clock skew between hosts is corrected but may have up to 1s residual error
 - Template extraction may group similar but distinct messages (entropy: 1.10 bits)

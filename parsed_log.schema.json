@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["timestamp", "host", "level", "component", "message", "template_id", "session_id"],
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC RFC3339 timestamp"
+    },
+    "host": {
+      "type": "string",
+      "description": "Pseudonymized hostname"
+    },
+    "level": {
+      "type": "string",
+      "enum": ["INFO", "WARN", "ERROR"],
+      "description": "Log level"
+    },
+    "component": {
+      "type": "string",
+      "description": "HDFS component name"
+    },
+    "message": {
+      "type": "string",
+      "description": "PII-scrubbed log message"
+    },
+    "template_id": {
+      "type": "string",
+      "description": "Drain3 template identifier"
+    },
+    "session_id": {
+      "type": "string",
+      "description": "host×user×5min bucket identifier"
+    },
+    "dedup_key": {
+      "type": "string",
+      "description": "SHA256(ts_ms|host|msg) for deduplication"
+    }
+  }
+}

@@ -1,0 +1,15 @@
+2024-08-15T10:00:00Z	node1.example.com	NameNode	INFO	Starting NameNode
+2024-08-15T10:00:01Z	node2.example.com	DataNode	INFO	Registered with NameNode: node1.example.com:8020
+2024-08-15T10:00:02Z	node3.example.com	DataNode	INFO	Registered with NameNode: node1.example.com:8020
+2024-08-15T10:00:05Z	node1.example.com	NameNode	INFO	Block pool BP-123456 complete
+2024-08-15T10:00:10Z	node2.example.com	DataNode	WARN	Slow disk write detected: /data/disk1
+2024-08-15T10:00:15Z	node1.example.com	NameNode	ERROR	Failed to replicate block blk_123456
+2024-08-15T10:00:20Z	node3.example.com	DataNode	INFO	Replicated block blk_123456 to node2.example.com
+2024-08-15T10:00:25Z	node1.example.com	NameNode	INFO	Safe mode is OFF
+2024-08-15T10:00:30Z	node2.example.com	DataNode	ERROR	Disk failure on /data/disk1
+2024-08-15T10:00:35Z	node1.example.com	NameNode	WARN	Under-replicated blocks total 5
+2024-08-15T10:00:40Z	node3.example.com	DataNode	INFO	Starting block scanner
+2024-08-15T10:00:45Z	node2.example.com	DataNode	INFO	Deleting block blk_123457
+2024-08-15T10:00:50Z	node1.example.com	NameNode	INFO	Checkpoint saved. FSImage size: 1024MB
+2024-08-15T10:00:55Z	node3.example.com	DataNode	INFO	Block verification succeeded for blk_123458
+2024-08-15T10:01:00Z	node1.example.com	NameNode	INFO	Replication queue initialized

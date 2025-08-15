@@ -63,5 +63,6 @@ run_demo: env up ingest replay run eval export
 
 # Analysis
 eda:
-	mkdir -p eda_results
-	conda run -n dovah python notebooks/eda_hdfs.py --input data/hdfs/parsed_logs_latest.json --out eda_results
+	mkdir -p reports/eda
+	python -m src.analysis.run_analysis --input tests/data/hdfs/sample.jsonl --out reports/eda
+	python -m src.eval.run_eval --baseline tests/data/hdfs/sample.jsonl --current tests/data/hdfs/sample.jsonl

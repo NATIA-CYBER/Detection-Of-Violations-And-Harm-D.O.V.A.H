@@ -1,0 +1,4 @@
+{"timestamp": "2025-08-15T10:00:00Z", "host": "namenode1.hadoop.local", "level": "INFO", "component": "NameNode", "message": "Starting NameNode", "template_id": "t1", "session_id": "s1", "dedup_key": "d1"}
+{"timestamp": "2025-08-15T10:00:01Z", "host": "datanode1.hadoop.local", "level": "INFO", "component": "DataNode", "message": "Block blk_1234 received from /10.0.0.1", "template_id": "t2", "session_id": "s2", "dedup_key": "d2"}
+{"timestamp": "2025-08-15T10:00:02Z", "host": "datanode2.hadoop.local", "level": "WARN", "component": "DataNode", "message": "Slow disk detected on /data/disk1", "template_id": "t3", "session_id": "s3", "dedup_key": "d3"}
+{"timestamp": "2025-08-15T10:00:03Z", "host": "namenode1.hadoop.local", "level": "ERROR", "component": "NameNode", "message": "Failed to process CVE-2023-1234 patch", "template_id": "t4", "session_id": "s4", "dedup_key": "d4"}

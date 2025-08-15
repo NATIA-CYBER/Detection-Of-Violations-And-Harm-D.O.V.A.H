@@ -374,21 +374,33 @@ def generate_data_card(output_dir: Path, stats: dict):
             f.write(f"- [{data_file}](../eda_results/{data_file})\n")
 
 def main():
-    # Setup paths
-    log_dir = Path('tests/data/hdfs')
-    output_dir = Path('eda_results')
-    output_dir.mkdir(exist_ok=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--input', required=True, help='Input JSONL file')
+    parser.add_argument('--out', required=True, help='Output directory')
+    args = parser.parse_args()
 
-    # Load logs
-    print('Loading logs...')
-    df = load_hdfs_logs(log_dir)
-    print(f'Loaded {len(df):,} log entries')
+    # Load data
+    print("Loading logs...")
+    df = pd.read_json(args.input, lines=True)
+    
+    # Ensure required columns exist
+    required_cols = ['timestamp', 'level', 'component', 'message', 'template_id']
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Missing required columns: {missing_cols}")
+        
+    # Convert timestamp to datetime if needed
+    if not pd.api.types.is_datetime64_any_dtype(df['timestamp']):
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+    
+    print(f"Loaded {len(df):,} log entries\n")
 
     # Run analyses
     print('\nAnalyzing template distribution...')
-    analyze_templates(df, output_dir)
+    analyze_templates(df, Path(args.out))
 
     print('\nAnalyzing class imbalance...')
+    analyze_class_imbalance(df, Path(args.out))
     analyze_class_imbalance(df, output_dir)
 
     print('\nDetecting volume spikes...')
