@@ -44,7 +44,7 @@ cp .env.example .env
 # Edit .env to set:
 # DATABASE_URL=postgresql://dovah:dovah@localhost:5432/dovah
 
-# Load env vars
+# Load env vars (bash/zsh)
 set -a; source .env; set +a
 
 # Migrations (one-time, idempotent)
@@ -70,10 +70,10 @@ python -m src.stream.job --input data/hdfs/parsed_logs_latest.json
 
 ## 6) Baseline scoring
 ```bash
-# Isolation Forest on window stats (writes scores, or outputs file depending on config)
+# Isolation Forest on window stats
 python -m src.models.anomaly.iforest
 
-# Log-LM / template perplexity scorer (session/window scores)
+# Log-LM / template perplexity scorer
 python -m src.models.log_lm.score
 ```
 
@@ -95,10 +95,6 @@ python -m src.eval.run_eval \
 # Without labels (still reports p95 if available)
 python -m src.eval.run_eval --pred data/out/pred.jsonl --total-windows 10000
 ```
-
-Metrics:
-- precision, recall, precision@k, FP/1k
-- p95_ms (end-to-end latency percentile)
 
 ## 9) Summarize & export evidence
 ```bash
@@ -125,7 +121,10 @@ make lock
 ```
 
 ## 12) Troubleshooting
-- DB not reachable / sqlalchemy.url missing — Load .env as shown and ensure Postgres is up (pg_isready).
-- Migrations complain about existing tables — Drop/recreate dev DB or let Alembic own schema from scratch.
-- conda-lock errors — Run it from the base env or upgrade pydantic (>= 2.7) in the env executing it.
-- No detections — Ensure window_features has rows and baselines produced outputs before running fusion.
+DB not reachable / sqlalchemy.url missing — Load .env as shown and ensure Postgres is up (pg_isready).
+
+Migrations complain about existing tables — Drop/recreate dev DB or let Alembic own schema from scratch.
+
+conda-lock errors — Run it from the base env or upgrade pydantic (>= 2.7) in the env executing it.
+
+No detections — Ensure window_features has rows and baselines produced outputs before running fusion.
