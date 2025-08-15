@@ -50,6 +50,22 @@ class HDFSLoader:
         r"(?:\.(?P<subsec>\d{1,6}))?(?:Z|[+-]\d{2}:?\d{2})?"
     )
     
+    # PII patterns
+    PII_PATTERNS = {
+        # RFC5322 email
+        "email": re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"),
+        # API keys, tokens (common formats)
+        "token": re.compile(r"(?:key|token|api[_-]?key|access[_-]?token)[\s:=]+[\"]*([\w\-\.]{32,})[\"]?"),
+        # AWS-style secrets
+        "aws_secret": re.compile(r"(?:aws)?_?(?:secret|access)_?key\s*[:=]\s*[\"]*([A-Za-z0-9/+=]{40})[\"]?"),
+        # Password in config/logs
+        "password": re.compile(r"(?:password|passwd|pwd)\s*[:=]\s*[\"]*([^\"\s]+)[\"]?"),
+        # Private keys
+        "private_key": re.compile(r"-----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY-----[^-]*-----END\s+(?:RSA\s+)?PRIVATE\s+KEY-----"),
+        # IP addresses (optional)
+        "ip": re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+    }
+    
     def __init__(self):
         # Get HMAC key from environment
         hmac_key_hex = os.getenv("DOVAH_HMAC_KEY")
@@ -95,6 +111,28 @@ class HDFSLoader:
         """Create HMAC-SHA256 pseudonym for PII."""
         h = hmac.new(self.hmac_key, value.encode(), hashlib.sha256)
         return h.hexdigest()
+    
+    def scrub_pii(self, text: str) -> str:
+        """Remove or pseudonymize PII from text."""
+        if not text:
+            return text
+            
+        # Start with the original text
+        scrubbed = text
+        
+        # Apply each PII pattern
+        for pattern_name, pattern in self.PII_PATTERNS.items():
+            matches = pattern.finditer(scrubbed)
+            for match in matches:
+                # Get the full match
+                pii = match.group(0)
+                # Create a pseudonym
+                pseudonym = self.pseudonymize(pii)
+                # Replace with type indicator and truncated hash
+                replacement = f"<{pattern_name}:{pseudonym[:8]}>"
+                scrubbed = scrubbed.replace(pii, replacement)
+        
+        return scrubbed
     
     def _load_template_cache(self) -> None:
         """Load template cache from disk."""
@@ -182,11 +220,15 @@ class HDFSLoader:
                 return None
             self.seen_events.add(event_hash)
             
+            # Scrub PII from message
+            scrubbed_msg = self.scrub_pii(msg)
+            
             return {
                 "ts": ts,
-                "host": host,
+                "host": self.pseudonymize(host),  # Always pseudonymize hosts
                 "component": comp,
                 "template_id": template_id,
+                "message": scrubbed_msg,  # Store scrubbed message
                 "session_id": self.pseudonymize(f"{host}:{ts.date()}"),
                 "level": level,
                 "labels": {},
