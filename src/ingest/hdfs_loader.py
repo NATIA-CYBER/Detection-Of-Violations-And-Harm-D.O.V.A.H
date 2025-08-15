@@ -66,6 +66,9 @@ class HDFSLoader:
         "ip": re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
     }
     
+    # CVE pattern (CVE-YYYY-NNNNN[NN])
+    CVE_PATTERN = re.compile(r"CVE-\d{4}-\d{4,7}", re.IGNORECASE)
+    
     def __init__(self):
         # Get HMAC key from environment
         hmac_key_hex = os.getenv("DOVAH_HMAC_KEY")
@@ -133,6 +136,27 @@ class HDFSLoader:
                 scrubbed = scrubbed.replace(pii, replacement)
         
         return scrubbed
+        
+    def extract_cves(self, text: str) -> List[str]:
+        """Extract CVE IDs from text.
+        
+        Returns:
+            List of CVE IDs in canonical format (CVE-YYYY-NNNNN[NN]).
+        """
+        if not text:
+            return []
+            
+        # Find all CVE matches
+        matches = self.CVE_PATTERN.finditer(text)
+        
+        # Extract and normalize CVE IDs
+        cves = []
+        for match in matches:
+            cve = match.group(0).upper()  # Normalize to uppercase
+            if cve not in cves:  # Deduplicate
+                cves.append(cve)
+                
+        return cves
     
     def _load_template_cache(self) -> None:
         """Load template cache from disk."""
@@ -223,6 +247,9 @@ class HDFSLoader:
             # Scrub PII from message
             scrubbed_msg = self.scrub_pii(msg)
             
+            # Extract CVEs for enrichment
+            cves = self.extract_cves(msg)
+            
             return {
                 "ts": ts,
                 "host": self.pseudonymize(host),  # Always pseudonymize hosts
@@ -231,7 +258,9 @@ class HDFSLoader:
                 "message": scrubbed_msg,  # Store scrubbed message
                 "session_id": self.pseudonymize(f"{host}:{ts.date()}"),
                 "level": level,
-                "labels": {},
+                "labels": {
+                    "cves": cves  # Add CVEs for EPSS/KEV enrichment
+                },
                 "schema_ver": self.SCHEMA_VERSION
             }
         except Exception as e:
