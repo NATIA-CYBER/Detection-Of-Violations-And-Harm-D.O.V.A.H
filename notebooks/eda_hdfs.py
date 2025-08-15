@@ -18,8 +18,8 @@ from datetime import datetime, timedelta
 from drain3 import TemplateMiner
 
 # Configure plots
-plt.style.use('seaborn')
-sns.set_palette('husl')
+# Use default style
+sns.set_theme()
 
 def load_hdfs_logs(log_dir: Path) -> pd.DataFrame:
     """Load HDFS logs into DataFrame."""
