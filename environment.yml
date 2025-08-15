@@ -18,5 +18,9 @@ dependencies:
   - ruff=0.5.*
   - black=24.*
   - pre-commit=3.7.*
+  - scipy=1.13.*
+  - matplotlib=3.9.*
+  - seaborn=0.13.*
   - pip:
       - pgvector==0.2.5
+      - drain3==0.9.11

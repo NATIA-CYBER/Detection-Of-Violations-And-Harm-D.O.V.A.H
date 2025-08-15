@@ -1,4 +1,4 @@
-.PHONY: env up down ingest replay run eval export test lint clean
+.PHONY: env up down ingest replay run eval export test lint clean eda
 
 # Environment Setup
 env:
@@ -60,3 +60,8 @@ clean:
 format: lint
 
 run_demo: env up ingest replay run eval export
+
+# Analysis
+eda:
+	mkdir -p eda_results
+	conda run -n dovah python notebooks/eda_hdfs.py --input data/hdfs/parsed_logs_latest.json --out eda_results
