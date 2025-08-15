@@ -2,48 +2,48 @@
 
 # Environment Setup
 env:
-	poetry install
-	poetry run pre-commit install
+	conda env create -f environment.yml || conda env update -f environment.yml
+	conda run -n dovah pre-commit install
 
 # Infrastructure
 up:
 	docker-compose up -d postgres
 	sleep 5  # Wait for PostgreSQL to be ready
-	poetry run alembic upgrade head
+	conda run -n dovah alembic upgrade head
 
 down:
 	docker-compose down
 
 # Data Pipeline
 ingest:
-	poetry run python -m src.ingest.epss_fetch
-	poetry run python -m src.ingest.kev_fetch
-	poetry run python -m src.ingest.hdfs_loader
+	conda run -n dovah python -m src.ingest.epss_fetch
+	conda run -n dovah python -m src.ingest.kev_fetch
+	conda run -n dovah python -m src.ingest.hdfs_loader
 
 replay:
-	poetry run python -m src.stream.replay
+	conda run -n dovah python -m src.stream.replay
 
 run:
-	poetry run python -m src.stream.features
-	poetry run python -m src.models.log_lm.score
-	poetry run python -m src.models.anomaly.iforest
-	poetry run python -m src.fusion.late_fusion
+	conda run -n dovah python -m src.stream.features
+	conda run -n dovah python -m src.models.log_lm.score
+	conda run -n dovah python -m src.models.anomaly.iforest
+	conda run -n dovah python -m src.fusion.late_fusion
 
 # Evaluation & Export
 eval:
-	poetry run python -m src.eval.metrics
+	conda run -n dovah python -m src.eval.metrics
 
 export:
-	poetry run python -m src.integrations.export_json
+	conda run -n dovah python -m src.integrations.export_json
 
 # Quality & Testing
 test:
-	poetry run pytest -v --cov=src --cov-report=html
+	conda run -n dovah pytest -v --cov=src --cov-report=html
 
 lint:
-	poetry run black src tests
-	poetry run ruff src tests
-	poetry run mypy src tests
+	conda run -n dovah black src tests
+	conda run -n dovah ruff src tests
+	conda run -n dovah mypy src tests
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +

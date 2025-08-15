@@ -11,15 +11,19 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Poetry
-RUN curl -sSL https://install.python-poetry.org | python3 -
+# Install Miniconda
+RUN curl -sSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o miniconda.sh \
+    && bash miniconda.sh -b -p /opt/conda \
+    && rm miniconda.sh
 
-# Copy dependency files
-COPY pyproject.toml poetry.lock ./
+# Add conda to path
+ENV PATH=/opt/conda/bin:$PATH
 
-# Configure Poetry and install dependencies
-RUN poetry config virtualenvs.create false \
-    && poetry install --no-dev --no-interaction --no-ansi
+# Copy environment file
+COPY environment.yml .
+
+# Create conda environment
+RUN conda env create -f environment.yml
 
 # Final stage
 FROM python:3.11-slim
