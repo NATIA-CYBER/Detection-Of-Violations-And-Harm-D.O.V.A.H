@@ -31,7 +31,7 @@ run:
 
 # Evaluation & Export
 eval:
-	conda run -n dovah python -m src.eval.metrics
+	conda run -n dovah python -m src.eval.run_eval
 
 export:
 	conda run -n dovah python -m src.integrations.export_json
