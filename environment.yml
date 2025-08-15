@@ -21,6 +21,11 @@ dependencies:
   - scipy=1.13.*
   - matplotlib=3.9.*
   - seaborn=0.13.*
+  - networkx=3.2.*
+  - python-louvain=0.16.*  # For community detection
+  - statsmodels=0.14.*     # For time series analysis
   - pip:
       - pgvector==0.2.5
       - drain3==0.9.11
+      - tenacity==8.2.3
+      - fastdtw==0.3.4      # For time series similarity
