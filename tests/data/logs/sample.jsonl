@@ -1,0 +1,5 @@
+{"ts": "2021-03-02T10:15:23Z", "node": "datanode1", "event": "BLOCK_RECEIVED", "block_id": "blk_1234567890", "src": "/10.0.2.15:50010", "dest": "/10.0.2.16:50010", "size": 67108864}
+{"ts": "2021-03-02T10:15:24Z", "node": "namenode1", "event": "BLOCK_ALLOCATED", "block_id": "blk_1234567890", "file": "/user/hadoop/data/file1.txt", "replication": 3}
+{"ts": "2021-03-02T10:15:25Z", "node": "datanode2", "event": "BLOCK_VERIFIED", "block_id": "blk_1234567890", "checksum": "sha256:a1b2c3d4", "status": "OK"}
+{"ts": "2021-03-02T10:15:26Z", "node": "datanode1", "event": "BLOCK_CORRUPTED", "block_id": "blk_9876543210", "reason": "checksum_mismatch"}
+{"ts": "2021-03-02T10:15:27Z", "node": "namenode1", "event": "REPLICATION_REQUESTED", "block_id": "blk_9876543210", "target_replicas": 3}

@@ -5,34 +5,37 @@
   "count": 3,
   "vulnerabilities": [
     {
-      "cveID": "CVE-2023-1234",
-      "vendorProject": "Example Vendor",
-      "product": "Example Product",
-      "vulnerabilityName": "Critical RCE",
-      "dateAdded": "2023-08-14",
-      "shortDescription": "Remote code execution vulnerability",
-      "requiredAction": "Update to latest version",
-      "dueDate": "2023-09-14"
+      "cveID": "CVE-2022-41082",
+      "vendorProject": "Microsoft",
+      "product": "Exchange Server",
+      "vulnerabilityName": "Microsoft Exchange Server Elevation of Privilege Vulnerability",
+      "dateAdded": "2022-09-30",
+      "shortDescription": "Microsoft Exchange Server contains a vulnerability that allows remote code execution when PowerShell is accessible to the attacker.",
+      "requiredAction": "Apply security update per vendor instructions",
+      "dueDate": "2022-10-21",
+      "knownRansomwareCampaignUse": true
     },
     {
-      "cveID": "CVE-2023-5678",
-      "vendorProject": "Test Vendor",
-      "product": "Test Product",
-      "vulnerabilityName": "SQL Injection",
-      "dateAdded": "2023-08-14",
-      "shortDescription": "SQL injection vulnerability",
-      "requiredAction": "Apply security patch",
-      "dueDate": "2023-09-14"
+      "cveID": "CVE-2021-44228",
+      "vendorProject": "Apache",
+      "product": "Log4j",
+      "vulnerabilityName": "Apache Log4j Remote Code Execution Vulnerability",
+      "dateAdded": "2021-12-10",
+      "shortDescription": "Apache Log4j contains a remote code execution vulnerability due to insufficient input validation in JNDI lookups.",
+      "requiredAction": "Upgrade to Log4j 2.15.0 or later",
+      "dueDate": "2021-12-24",
+      "knownRansomwareCampaignUse": true
     },
     {
-      "cveID": "CVE-2023-9012",
-      "vendorProject": "Demo Vendor",
-      "product": "Demo Product",
-      "vulnerabilityName": "Auth Bypass",
-      "dateAdded": "2023-08-14",
-      "shortDescription": "Authentication bypass vulnerability",
-      "requiredAction": "Upgrade system",
-      "dueDate": "2023-09-14"
+      "cveID": "CVE-2021-26855",
+      "vendorProject": "Microsoft",
+      "product": "Exchange Server",
+      "vulnerabilityName": "Microsoft Exchange Server SSRF Vulnerability",
+      "dateAdded": "2021-03-02",
+      "shortDescription": "Microsoft Exchange Server contains a server-side request forgery vulnerability that allows remote code execution.",
+      "requiredAction": "Apply security update per vendor instructions",
+      "dueDate": "2021-03-16",
+      "knownRansomwareCampaignUse": true
     }
   ]
 }
