@@ -1,7 +1,7 @@
 {
-  "title": "Known Exploited Vulnerabilities Catalog",
+  "title": "CISA Known Exploited Vulnerabilities Catalog",
   "catalogVersion": "2023.08.14",
-  "dateReleased": "2023-08-14T00:00:00",
+  "dateReleased": "2023-08-14T00:00:00.000",
   "count": 3,
   "vulnerabilities": [
     {
@@ -13,7 +13,8 @@
       "shortDescription": "Microsoft Exchange Server contains a vulnerability that allows remote code execution when PowerShell is accessible to the attacker.",
       "requiredAction": "Apply security update per vendor instructions",
       "dueDate": "2022-10-21",
-      "knownRansomwareCampaignUse": true
+      "knownRansomwareCampaignUse": true,
+      "notes": "Active exploitation in the wild. Part of ProxyNotShell campaign."
     },
     {
       "cveID": "CVE-2021-44228",
@@ -24,7 +25,8 @@
       "shortDescription": "Apache Log4j contains a remote code execution vulnerability due to insufficient input validation in JNDI lookups.",
       "requiredAction": "Upgrade to Log4j 2.15.0 or later",
       "dueDate": "2021-12-24",
-      "knownRansomwareCampaignUse": true
+      "knownRansomwareCampaignUse": true,
+      "notes": "Log4Shell vulnerability. Widespread exploitation observed."
     },
     {
       "cveID": "CVE-2021-26855",
@@ -35,7 +37,8 @@
       "shortDescription": "Microsoft Exchange Server contains a server-side request forgery vulnerability that allows remote code execution.",
       "requiredAction": "Apply security update per vendor instructions",
       "dueDate": "2021-03-16",
-      "knownRansomwareCampaignUse": true
+      "knownRansomwareCampaignUse": true,
+      "notes": "Part of ProxyLogon campaign. Active exploitation by multiple threat actors."
     }
   ]
 }
