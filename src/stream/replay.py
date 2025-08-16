@@ -21,6 +21,22 @@ logging.basicConfig(
     stream=sys.stderr,  # Log to stderr to keep stdout clean for piped data
 )
 
+def _stream_events(input_file: str):
+    """Yields events from a file, looping when it reaches the end."""
+    while True:
+        try:
+            with open(input_file, 'r') as f:
+                for line in f:
+                    try:
+                        yield json.loads(line)
+                    except json.JSONDecodeError:
+                        logging.warning(f"Skipping malformed JSON line: {line.strip()}")
+                        continue
+        except (IOError, FileNotFoundError) as e:
+            logging.error(f"Cannot read {input_file}: {e}")
+            break  # Stop if the file is unreadable
+
+
 def replay_events(
     input_file: str, eps: int, warmup_sec: int, run_duration_sec: int, num_events: int = None
 ) -> None:
@@ -32,21 +48,12 @@ def replay_events(
         warmup_sec: Duration of the warm-up period in seconds.
         run_duration_sec: Total duration of the steady-state run in seconds.
     """
+    if eps <= 0:
+        logging.error("EPS must be a positive number.")
+        return
+
     logging.info(f"Starting replay from '{input_file}' at {eps} EPS.")
-    
-    # Read all events into memory
-    try:
-        with open(input_file, 'r') as f:
-            events = [json.loads(line) for line in f]
-    except (IOError, json.JSONDecodeError) as e:
-        logging.error(f"Failed to read or parse {input_file}: {e}")
-        return
-
-    if not events:
-        logging.warning("Input file is empty. Nothing to replay.")
-        return
-
-    logging.info(f"Loaded {len(events)} events.")
+    event_stream = _stream_events(input_file)
 
     # --- Warm-up Period ---
     logging.info(f"Starting warm-up for {warmup_sec} seconds...")
@@ -60,29 +67,26 @@ def replay_events(
     # --- Steady-State Run ---
     logging.info(f"Starting steady-state run for {run_duration_sec} seconds...")
     start_run_time = time.time()
-    total_run_duration = time.time() - start_run_time
-    event_index = 0
+    deadline = start_run_time + run_duration_sec
     total_events_sent = 0
     sleep_interval = 1.0 / eps
 
-    while True:
+    for event in event_stream:
         if num_events is not None and total_events_sent >= num_events:
             logging.info(f"Sent specified {num_events} events. Stopping.")
             break
 
-        if num_events is None and total_run_duration >= run_duration_sec:
+        if num_events is None and time.time() >= deadline:
             logging.info(f"Run duration of {run_duration_sec}s reached. Stopping.")
             break
+
         loop_start_time = time.time()
 
-        # Get the next event, looping back to the start if we reach the end
-        event = events[event_index % len(events)].copy()  # Use a copy to avoid modifying the original
-        event_index += 1
-
-        # Add a replay timestamp and update the event timestamp to be monotonic
+        # Preserve original timestamp and add a replay timestamp
+        event.setdefault('orig_ts', event.get('timestamp'))
         now = datetime.now(timezone.utc)
         event['replay_ts'] = now.isoformat()
-        event['timestamp'] = now.isoformat()
+        event['timestamp'] = now.isoformat()  # Update timestamp for monotonic stream
 
         # Write event to stdout
         try:
@@ -97,8 +101,8 @@ def replay_events(
         loop_end_time = time.time()
         elapsed = loop_end_time - loop_start_time
         time.sleep(max(0, sleep_interval - elapsed))
-        total_run_duration = time.time() - start_run_time
 
+    total_run_duration = time.time() - start_run_time
     logging.info(f"Replay finished. Sent {total_events_sent} events in {total_run_duration:.2f} seconds.")
 
 if __name__ == "__main__":
