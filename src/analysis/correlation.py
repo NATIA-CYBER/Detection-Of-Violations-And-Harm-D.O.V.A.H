@@ -11,7 +11,7 @@ from collections import defaultdict
 class EventNode:
     """Node in event correlation graph."""
     event_id: str
-    timestamp: datetime
+    ts: datetime
     host: str
     process: str
     severity: str
@@ -76,7 +76,7 @@ class EventCorrelator:
         for _, row in events_df.iterrows():
             node = EventNode(
                 event_id=row["event_id"],
-                timestamp=row["timestamp"],
+                ts=row["ts"],
                 host=row["host"],
                 process=row["process"],
                 severity=row["severity"],
@@ -87,14 +87,14 @@ class EventCorrelator:
             self.graph.add_node(node.event_id, **node.__dict__)
             
         # Find correlations between events in window
-        window_start = min(node.timestamp for node in new_nodes)
-        window_end = max(node.timestamp for node in new_nodes)
+        window_start = min(node.ts for node in new_nodes)
+        window_end = max(node.ts for node in new_nodes)
         
         # Get existing nodes in window
         window_nodes = [
             (node_id, data)
             for node_id, data in self.graph.nodes(data=True)
-            if window_start - self.window_size <= data["timestamp"] <= window_end
+            if window_start - self.window_size <= data["ts"] <= window_end
         ]
         
         # Calculate correlations
@@ -104,7 +104,7 @@ class EventCorrelator:
                     continue
                     
                 # Calculate weights
-                time_delta = abs(source.timestamp - target_data["timestamp"])
+                time_delta = abs(source.ts - target_data["ts"])
                 temporal_weight = self._calculate_temporal_weight(time_delta)
                 
                 template_weight = self._calculate_template_weight(
@@ -147,7 +147,7 @@ class EventCorrelator:
         old_nodes = [
             node_id
             for node_id, data in self.graph.nodes(data=True)
-            if data["timestamp"] < cutoff
+            if data["ts"] < cutoff
         ]
         self.graph.remove_nodes_from(old_nodes)
         

@@ -57,12 +57,12 @@ def analyze_drift(baseline_df: pd.DataFrame, current_df: pd.DataFrame,
             "total_baseline": len(baseline_df),
             "total_current": len(current_df),
             "time_range_baseline": [
-                baseline_df["timestamp"].min(),
-                baseline_df["timestamp"].max()
+                baseline_df["ts"].min(),
+                baseline_df["ts"].max()
             ],
             "time_range_current": [
-                current_df["timestamp"].min(),
-                current_df["timestamp"].max()
+                current_df["ts"].min(),
+                current_df["ts"].max()
             ]
         }
     }

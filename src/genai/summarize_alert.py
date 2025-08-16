@@ -26,7 +26,7 @@ class AlertSummarizer:
         query = text("""
             SELECT 
                 d.id as detection_id,
-                d.timestamp,
+                d.ts,
                 d.score as anomaly_score,
                 d.session_id,
                 w.event_count,
@@ -42,9 +42,9 @@ class AlertSummarizer:
             JOIN window_features w ON d.window_id = w.id
             LEFT JOIN epss e ON d.cve_id = e.cve_id
             LEFT JOIN kev k ON d.cve_id = k.cve_id
-            WHERE d.timestamp >= :start_time
+            WHERE d.ts >= :start_time
             AND d.score >= :min_score
-            ORDER BY d.score DESC, d.timestamp DESC
+            ORDER BY d.score DESC, d.ts DESC
             LIMIT :limit
         """)
         
@@ -66,7 +66,7 @@ class AlertSummarizer:
     def generate_summary(self, alert: Dict) -> str:
         """Generate a human-readable summary of the alert with key factors."""
         summary_parts = [
-            f"Alert detected at {alert['timestamp'].isoformat()}Z",
+            f"Alert detected at {alert['ts'].isoformat()}Z",
             f"Anomaly score: {alert['anomaly_score']:.3f}",
             "\nKey factors:",
             f"- {alert['event_count']} events in window",

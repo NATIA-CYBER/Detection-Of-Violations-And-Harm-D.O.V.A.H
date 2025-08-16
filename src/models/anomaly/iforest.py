@@ -122,7 +122,7 @@ class IForestModel:
             # Single score case - use absolute value scaling
             scores = 1 / (1 + np.exp(-np.abs(raw_scores)))
         
-        # Map scores to events with timestamps
+        # Map scores to events with ts
         result = {}
         for event, score in zip(valid_events, scores):
             session_id = event["session_id"]

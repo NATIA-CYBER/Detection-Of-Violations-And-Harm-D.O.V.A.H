@@ -38,7 +38,7 @@ class RollingStats:
         stats = {}
         for window in self.windows:
             window_start = current_time - timedelta(days=window)
-            window_df = df[df['timestamp'] >= window_start]
+            window_df = df[df['ts'] >= window_start]
             
             if window_df.empty:
                 continue

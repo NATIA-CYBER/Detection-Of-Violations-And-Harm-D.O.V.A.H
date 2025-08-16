@@ -26,13 +26,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Regular expression for parsing log lines
-LOG_PATTERN = re.compile(r'(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})\t'
+LOG_PATTERN = re.compile(r'(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})\t'
                          r'(?P<host>\S+)\t'
                          r'(?P<component>\S+)\t'
                          r'(?P<level>\S+)\t'
                          r'(?P<message>.*)')
 
-def parse_timestamp(ts_str: str) -> datetime:
+def parse_ts(ts_str: str) -> datetime:
     """Parse timestamp string into datetime object."""
     return datetime.strptime(ts_str, '%Y-%m-%d %H:%M:%S,%f')
 

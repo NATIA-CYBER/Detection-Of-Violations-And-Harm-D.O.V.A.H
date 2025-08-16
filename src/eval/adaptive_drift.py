@@ -48,7 +48,7 @@ class AdaptiveDriftDetector:
         
     def _detect_seasonality(
         self,
-        timestamps: pd.Series,
+        ts: pd.Series,
         values: pd.Series
     ) -> Optional[str]:
         """Auto-detect seasonality pattern."""
@@ -56,11 +56,11 @@ class AdaptiveDriftDetector:
             return None
             
         # Check daily pattern
-        hourly = values.groupby(timestamps.dt.hour).mean()
+        hourly = values.groupby(ts.dt.hour).mean()
         hourly_std = hourly.std()
         
         # Check weekly pattern
-        daily = values.groupby(timestamps.dt.day_of_week).mean()
+        daily = values.groupby(ts.dt.day_of_week).mean()
         daily_std = daily.std()
         
         if hourly_std > daily_std * 1.5:
@@ -79,7 +79,7 @@ class AdaptiveDriftDetector:
         """Get seasonally adjusted baseline."""
         if self.seasonality == "auto":
             pattern = self._detect_seasonality(
-                data["timestamp"],
+                data["ts"],
                 data[feature_name]
             )
         else:
@@ -88,7 +88,7 @@ class AdaptiveDriftDetector:
         if pattern == "daily":
             current_hour = current_time.hour
             return data[
-                data["timestamp"].dt.hour.between(
+                data["ts"].dt.hour.between(
                     current_hour - 1,
                     current_hour + 1,
                     inclusive="both"
@@ -97,7 +97,7 @@ class AdaptiveDriftDetector:
         elif pattern == "weekly":
             current_day = current_time.weekday()
             return data[
-                data["timestamp"].dt.day_of_week == current_day
+                data["ts"].dt.day_of_week == current_day
             ][feature_name]
         else:
             return data[feature_name]
@@ -117,7 +117,7 @@ class AdaptiveDriftDetector:
         """
         baseline_start = current_time - self.baseline_window
         baseline_data = data[
-            data["timestamp"].between(baseline_start, current_time)
+            data["ts"].between(baseline_start, current_time)
         ]
         
         if len(baseline_data) < self.min_samples:
@@ -166,7 +166,7 @@ class AdaptiveDriftDetector:
         """
         detection_start = current_time - self.detection_window
         current_data = data[
-            data["timestamp"].between(detection_start, current_time)
+            data["ts"].between(detection_start, current_time)
         ]
         
         if len(current_data) < self.min_samples:
@@ -182,7 +182,7 @@ class AdaptiveDriftDetector:
                 feature,
                 current_time,
                 data[
-                    data["timestamp"].between(
+                    data["ts"].between(
                         current_time - self.baseline_window,
                         current_time - self.detection_window
                     )

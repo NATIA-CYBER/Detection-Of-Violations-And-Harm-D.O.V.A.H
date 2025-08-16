@@ -69,29 +69,29 @@ def enrich_with_epss(
     
     Args:
         events: DataFrame with CVE events
-        epss: EPSS scores DataFrame
+        epss: DataFrame with EPSS scores
         cve_col: Column containing CVE IDs
         
     Returns:
-        Enriched DataFrame with EPSS scores
+        Enriched DataFrame with EPSS scores and risk metrics
     """
-    # Normalize column names
-    epss = epss.rename(columns={
-        "cve": cve_col,
-        "epss": "epss_score",
-        "percentile": "epss_percentile"
-    })
-    
-    # Join and handle missing scores
+    if events.empty:
+        return pd.DataFrame()
+        
+    # Merge EPSS scores
     result = events.merge(
-        epss[[cve_col, "epss_score", "epss_percentile", "date"]],
+        epss[[cve_col, "epss_score", "percentile"]],
         on=cve_col,
-        how="left",
-        suffixes=("", "_epss")
+        how="left"
     )
     
-    # Flag high-risk CVEs (top 10% EPSS)
-    result["is_high_risk"] = result["epss_percentile"] >= 90
+    # Add risk indicators
+    result["is_high_risk"] = (
+        result["percentile"].fillna(0) >= 95
+    )
+    
+    # Keep missing scores as NaN
+    result["epss_percentile"] = result["percentile"]
     
     return result
 
@@ -110,25 +110,26 @@ def enrich_with_kev(
     Returns:
         Enriched DataFrame with KEV data
     """
+    if events.empty:
+        return pd.DataFrame()
+        
+    # Handle empty KEV data
+    if kev.empty:
+        result = events.copy()
+        result["in_kev"] = False
+        return result
+        
     # Normalize column names
-    kev = kev.rename(columns={"cveID": cve_col})
-    
-    # Select relevant KEV columns
-    kev_cols = [
-        cve_col, "vendorProject", "product",
-        "shortDescription", "requiredAction",
-        "dueDate", "knownRansomwareCampaignUse"
-    ]
-    kev_cols = [c for c in kev_cols if c in kev.columns]
+    kev = kev.rename(columns={"cveID": "cve_id"})
     
     # Join and add KEV flag
     result = events.merge(
-        kev[kev_cols],
-        on=cve_col,
-        how="left",
-        suffixes=("", "_kev")
+        kev,
+        left_on=cve_col,
+        right_on="cve_id",
+        how="left"
     )
-    result["in_kev"] = result["vendorProject"].notna()
+    result["in_kev"] = result["cve_id"].notna()
     
     return result
 

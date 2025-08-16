@@ -38,14 +38,21 @@ def calculate_entropy(values):
 import datetime
 from datetime import timedelta
 from drain3 import TemplateMiner
+from src.ingest.scrub import scrub, scrub_mapping
 
 # Configure plots
 # Use default style
 sns.set_theme()
 
-def load_hdfs_logs(log_dir: Path) -> pd.DataFrame:
-    """Load HDFS logs into DataFrame."""
+def load_hdfs_logs(log_dir: Path) -> tuple[pd.DataFrame, dict]:
+    """Load HDFS logs into DataFrame with PII scrubbing.
+    
+    Returns:
+        tuple: (DataFrame with scrubbed logs, PII audit stats)
+    """
     records = []
+    pii_matches = {'pre_scrub': {}, 'post_scrub': {}}
+    
     for log_file in log_dir.glob('*.log'):
         with open(log_file) as f:
             for line in f:
@@ -53,14 +60,32 @@ def load_hdfs_logs(log_dir: Path) -> pd.DataFrame:
                 if len(parts) >= 4:
                     ts_str, host, comp, msg, *rest = parts
                     level = rest[0] if rest else None
+                    
+                    # Scrub PII from message and host
+                    scrubbed_msg = scrub(msg)
+                    scrubbed_host = scrub(host)
+                    
+                    # Track PII matches
+                    if scrubbed_msg != msg:
+                        pii_matches['pre_scrub']['message'] = pii_matches['pre_scrub'].get('message', 0) + 1
+                    if scrubbed_host != host:
+                        pii_matches['pre_scrub']['host'] = pii_matches['pre_scrub'].get('host', 0) + 1
+                    
                     records.append({
                         'ts': pd.to_datetime(ts_str),
-                        'host': host,
+                        'host': scrubbed_host,
                         'component': comp,
-                        'message': msg,
-                        'level': level
+                        'message': scrubbed_msg,
+                        'level': level,
+                        'original_message': msg  # Keep original for template mining
                     })
-    return pd.DataFrame(records)
+    df = pd.DataFrame(records)
+    
+    # Verify no PII remains
+    for col in ['message', 'host']:
+        pii_matches['post_scrub'][col] = sum(1 for x in df[col] if scrub(x) != x)
+    
+    return df, pii_matches
 
 def plot_host_template_heatmap(df: pd.DataFrame, output_dir: Path):
     """Generate host × template frequency heatmap."""
@@ -159,11 +184,11 @@ def analyze_templates(df: pd.DataFrame, output_dir: Path):
     with open(output_dir / 'rare_templates.json', 'w') as f:
         json.dump(rare_stats, f, indent=2)
     """Analyze template distribution and entropy."""
-    # Extract templates
+    # Extract templates from original messages
     miner = TemplateMiner()
     templates = {}
-    for msg in df['message']:
-        result = miner.add_log_message(msg)
+    for msg, orig in zip(df['message'], df['original_message']):
+        result = miner.add_log_message(orig)
         templates[msg] = result['cluster_id']
 
     df['template_id'] = df['message'].map(templates)
@@ -378,29 +403,25 @@ def main():
     parser.add_argument('--input', required=True, help='Input JSONL file')
     parser.add_argument('--out', required=True, help='Output directory')
     args = parser.parse_args()
+    output_dir = Path(args.out)
 
-    # Load data
-    print("Loading logs...")
-    df = pd.read_json(args.input, lines=True)
+    # Load and scrub data
+    print("Loading and scrubbing logs...")
+    df, pii_stats = load_hdfs_logs(Path(args.input))
     
-    # Ensure required columns exist
-    required_cols = ['timestamp', 'level', 'component', 'message', 'template_id']
-    missing_cols = [col for col in required_cols if col not in df.columns]
-    if missing_cols:
-        raise ValueError(f"Missing required columns: {missing_cols}")
-        
-    # Convert timestamp to datetime if needed
-    if not pd.api.types.is_datetime64_any_dtype(df['timestamp']):
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
+    # Save PII audit results
+    with open(output_dir / 'pii_audit.json', 'w') as f:
+        json.dump(pii_stats, f, indent=2)
     
-    print(f"Loaded {len(df):,} log entries\n")
+    print(f"Loaded {len(df):,} log entries")
+    print(f"Found PII in {sum(pii_stats['pre_scrub'].values())} messages/hosts")
+    print(f"Post-scrub PII remaining: {sum(pii_stats['post_scrub'].values())}\n")
 
     # Run analyses
     print('\nAnalyzing template distribution...')
-    analyze_templates(df, Path(args.out))
+    analyze_templates(df, output_dir)
 
     print('\nAnalyzing class imbalance...')
-    analyze_class_imbalance(df, Path(args.out))
     analyze_class_imbalance(df, output_dir)
 
     print('\nDetecting volume spikes...')
@@ -408,6 +429,28 @@ def main():
 
     print('\nAnalyzing distribution drift...')
     analyze_drift(df, output_dir)
+    
+    # Generate data card with all stats
+    stats = {
+        'total_events': len(df),
+        'pii_audit': pii_stats,
+        'time_coverage': {
+            'start': df['ts'].min().isoformat(),
+            'end': df['ts'].max().isoformat(),
+            'duration_hours': (df['ts'].max() - df['ts'].min()).total_seconds() / 3600
+        },
+        'hourly_stats': df.groupby(pd.Grouper(key='ts', freq='h')).size().describe().to_dict(),
+        'null_counts': df.isnull().sum().to_dict(),
+        'template_stats': {
+            'unique_count': df['template_id'].nunique(),
+            'entropy': float(stats.entropy(df['template_id'].value_counts() / len(df)))
+        },
+        'rare_templates': {
+            'count': len(df[df['template_id'].map(df['template_id'].value_counts()) <= df['template_id'].value_counts().quantile(0.1)])
+        }
+    }
+    
+    generate_data_card(output_dir, stats)
 
 if __name__ == '__main__':
     main()

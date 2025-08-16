@@ -43,8 +43,12 @@ class CVEEnricher:
         self.epss_df = pd.read_sql(epss_query, self.session.bind)
         
         # Load KEV data
-        kev_query = select(models.KEV)
+        kev_query = select(models.KEV).order_by(models.KEV.ts.desc())
         self.kev_df = pd.read_sql(kev_query, self.session.bind)
+        
+        # Load component risk data
+        risk_query = select(models.ComponentRisk).order_by(models.ComponentRisk.ts.desc())
+        self.risk_df = pd.read_sql(risk_query, self.session.bind)
         
         # Calculate EPSS trends (7/30/90 day windows)
         self._calculate_epss_trends()
@@ -61,10 +65,10 @@ class CVEEnricher:
             for window in windows:
                 recent = cve_scores.head(window)
                 if not recent.empty:
-                    trends[f'{window}d_mean'] = recent['epss'].mean()
-                    trends[f'{window}d_std'] = recent['epss'].std()
+                    trends[f'{window}d_mean'] = recent['epss_score'].mean()
+                    trends[f'{window}d_std'] = recent['epss_score'].std()
                     trends[f'{window}d_trend'] = np.polyfit(
-                        range(len(recent)), recent['epss'], 1
+                        range(len(recent)), recent['epss_score'], 1
                     )[0] if len(recent) > 1 else 0
             
             self.epss_trends[cve] = trends
@@ -75,15 +79,15 @@ class CVEEnricher:
         # Get EPSS score and trends
         epss_score = float(self.epss_df[
             self.epss_df['cve'] == cve_id
-        ]['epss'].iloc[0]) if not self.epss_df.empty else 0.0
+        ]['epss_score'].iloc[0]) if cve_id in self.epss_df['cve'].values else 0.0
         
         epss_trends = self.epss_trends.get(cve_id, {})
         
         # Check KEV status
-        kev_status = bool(cve_id in self.kev_df['cve'].values)
+        kev_status = bool(cve_id in self.kev_df['cve_id'].values)
         
         # Get patch status and age
-        kev_row = self.kev_df[self.kev_df['cve'] == cve_id]
+        kev_row = self.kev_df[self.kev_df['cve_id'] == cve_id]
         if not kev_row.empty:
             patch_available = True
             published_date = pd.to_datetime(kev_row['date_added'].iloc[0])
@@ -94,11 +98,20 @@ class CVEEnricher:
             patch_available = False
             days_since_publish = 0
         
-        # Component risk from HDFSLoader weights
-        from src.ingest.hdfs_loader import HDFSLoader
-        component_risk = HDFSLoader.COMPONENT_RISK_WEIGHTS.get(
-            component, HDFSLoader.COMPONENT_RISK_WEIGHTS['Default']
-        )
+        # Get component risk metrics
+        component_risk = 0.0
+        rolling_stats = {}
+        
+        if component:
+            risk_rows = self.risk_df[self.risk_df['component'] == component]
+            if not risk_rows.empty:
+                latest = risk_rows.iloc[0]
+                component_risk = latest['epss_trend']
+                rolling_stats = {
+                    'cve_count': latest['cve_count'],
+                    'high_risk_ratio': latest['high_risk_ratio'],
+                    'epss_trend': latest['epss_trend']
+                }
         
         return CVEContext(
             cve_id=cve_id,
@@ -109,7 +122,7 @@ class CVEEnricher:
             patch_available=patch_available,
             days_since_publish=days_since_publish,
             component_risk=component_risk,
-            rolling_stats=epss_trends
+            rolling_stats=rolling_stats
         )
     
     def enrich_multiple(self, cves: List[Dict]) -> List[CVEContext]:

@@ -128,12 +128,12 @@ class AnomalyDetector:
         """
         # Extract features from sliding windows
         windows = []
-        window_end = events_df["timestamp"].max()
-        while window_end > events_df["timestamp"].min():
+        window_end = events_df["ts"].max()
+        while window_end > events_df["ts"].min():
             window_start = window_end - self.window_size
             window_df = events_df[
-                (events_df["timestamp"] >= window_start) &
-                (events_df["timestamp"] < window_end)
+                (events_df["ts"] >= window_start) &
+                (events_df["ts"] < window_end)
             ]
             features = self.extract_features(window_df)
             windows.append(self.features_to_array(features))
