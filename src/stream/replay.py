@@ -12,7 +12,9 @@ import json
 import logging
 import sys
 import time
+import random
 from datetime import datetime, timezone
+from typing import Optional
 
 # Configure logging
 logging.basicConfig(
@@ -21,24 +23,51 @@ logging.basicConfig(
     stream=sys.stderr,  # Log to stderr to keep stdout clean for piped data
 )
 
-def _stream_events(input_file: str):
-    """Yields events from a file, looping when it reaches the end."""
-    while True:
+def _stream_events(input_file: str, do_loop: bool, do_shuffle: bool):
+    """Yields events from a file, with options for looping and shuffling."""
+    events = []
+    if do_shuffle:
+        logging.info("Shuffling requires loading the entire file into memory.")
         try:
             with open(input_file, 'r') as f:
-                for line in f:
-                    try:
-                        yield json.loads(line)
-                    except json.JSONDecodeError:
-                        logging.warning(f"Skipping malformed JSON line: {line.strip()}")
-                        continue
+                events = [json.loads(line) for line in f if line.strip()]
+            random.shuffle(events)
+            logging.info(f"Loaded and shuffled {len(events)} events.")
         except (IOError, FileNotFoundError) as e:
-            logging.error(f"Cannot read {input_file}: {e}")
-            break  # Stop if the file is unreadable
+            logging.error(f"Cannot read {input_file} for shuffling: {e}")
+            return  # Stop if the file is unreadable
+
+    while True:
+        if do_shuffle:
+            for event in events:
+                yield event
+        else:
+            try:
+                with open(input_file, 'r') as f:
+                    for line in f:
+                        try:
+                            yield json.loads(line)
+                        except json.JSONDecodeError:
+                            logging.warning(f"Skipping malformed JSON line: {line.strip()}")
+                            continue
+            except (IOError, FileNotFoundError) as e:
+                logging.error(f"Cannot read {input_file}: {e}")
+                break  # Stop if the file is unreadable
+        
+        if not do_loop:
+            break
 
 
 def replay_events(
-    input_file: str, eps: int, warmup_sec: int, run_duration_sec: int, num_events: int = None
+    input_file: str,
+    eps: int,
+    warmup_sec: int,
+    run_duration_sec: int,
+    num_events: Optional[int] = None,
+    do_loop: bool = False,
+    do_shuffle: bool = False,
+    jitter: float = 0.1,
+    warmup_eps_fraction: float = 0.2,
 ) -> None:
     """Replays events from a file at a target EPS.
 
@@ -53,23 +82,45 @@ def replay_events(
         return
 
     logging.info(f"Starting replay from '{input_file}' at {eps} EPS.")
-    event_stream = _stream_events(input_file)
+    event_stream = _stream_events(input_file, do_loop, do_shuffle)
 
     # --- Warm-up Period ---
-    logging.info(f"Starting warm-up for {warmup_sec} seconds...")
-    start_time = time.time()
-    while time.time() - start_time < warmup_sec:
-        # During warm-up, you might pre-load caches or run other prep tasks.
-        # For now, we just wait.
-        time.sleep(1)
-    logging.info("Warm-up complete.")
+    warmup_eps = int(eps * warmup_eps_fraction)
+    logging.info(f"Starting warm-up for {warmup_sec} seconds at {warmup_eps} EPS...")
+    warmup_deadline = time.time() + warmup_sec
+    warmup_events_sent = 0
+    if warmup_eps > 0:
+        warmup_sleep_interval = 1.0 / warmup_eps
+        for event in event_stream:
+            if time.time() >= warmup_deadline:
+                break
+            loop_start_time = time.time()
+
+            # Write event to stdout
+            try:
+                sys.stdout.write(json.dumps(event) + '\n')
+                sys.stdout.flush()
+                warmup_events_sent += 1
+            except BrokenPipeError:
+                logging.warning("Broken pipe during warm-up. Shutting down.")
+                return
+
+            # Sleep to maintain the target EPS rate
+            elapsed = time.time() - loop_start_time
+            time.sleep(max(0, warmup_sleep_interval - elapsed))
+    else:
+        time.sleep(warmup_sec) # If warmup EPS is 0, just wait
+
+    logging.info(f"Warm-up complete. Sent {warmup_events_sent} events.")
 
     # --- Steady-State Run ---
     logging.info(f"Starting steady-state run for {run_duration_sec} seconds...")
     start_run_time = time.time()
     deadline = start_run_time + run_duration_sec
     total_events_sent = 0
-    sleep_interval = 1.0 / eps
+    base_sleep_interval = 1.0 / eps
+    # Jitter is a fraction of the base sleep interval
+    jitter_amount = base_sleep_interval * jitter
 
     for event in event_stream:
         if num_events is not None and total_events_sent >= num_events:
@@ -100,6 +151,10 @@ def replay_events(
         # Sleep to maintain the target EPS rate
         loop_end_time = time.time()
         elapsed = loop_end_time - loop_start_time
+        sleep_interval = random.uniform(
+            base_sleep_interval - jitter_amount,
+            base_sleep_interval + jitter_amount
+        )
         time.sleep(max(0, sleep_interval - elapsed))
 
     total_run_duration = time.time() - start_run_time
@@ -137,6 +192,28 @@ if __name__ == "__main__":
         default=None,
         help="Total number of events to replay. Overrides run-duration-sec if set."
     )
+    parser.add_argument(
+        "--loop",
+        action="store_true",
+        help="Loop the dataset from the beginning upon reaching the end."
+    )
+    parser.add_argument(
+        "--shuffle",
+        action="store_true",
+        help="Shuffle the dataset before replaying. Requires loading the entire file into memory."
+    )
+    parser.add_argument(
+        "--jitter",
+        type=float,
+        default=0.1,
+        help="Fraction of sleep interval to apply as random jitter (0 to 1)."
+    )
+    parser.add_argument(
+        "--warmup-eps-fraction",
+        type=float,
+        default=0.2,
+        help="Fraction of target EPS to emit during warm-up."
+    )
     args = parser.parse_args()
 
     replay_events(
@@ -145,4 +222,8 @@ if __name__ == "__main__":
         warmup_sec=args.warmup_sec,
         run_duration_sec=args.run_duration_sec,
         num_events=args.num_events,
+        do_loop=args.loop,
+        do_shuffle=args.shuffle,
+        jitter=args.jitter,
+        warmup_eps_fraction=args.warmup_eps_fraction,
     )
