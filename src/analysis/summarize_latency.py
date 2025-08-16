@@ -3,7 +3,7 @@ import pandas as pd
 import sys
 
 def summarize_latency(file_path: str, column_name: str, sla_ms: int):
-    """Calculates and prints summary statistics for latency data."""
+    """Calculates and prints summary statistics for latency data."
     try:
         df = pd.read_csv(file_path)
 
