@@ -1,11 +1,14 @@
 import json
 import sys
+import os
 import unittest
 from unittest.mock import patch, MagicMock
 from collections import deque
 from datetime import datetime, timedelta, timezone
 
-# Add src directory to path to import stream_processor
+# Add project root to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
 from src.stream import features
 
 class TestStreamFeatures(unittest.TestCase):
