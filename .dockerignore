@@ -1,0 +1,47 @@
+# VCS & metadata
+.git
+.git/*
+.gitignore
+
+# Python cruft
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.so
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Environments & secrets
+.venv/
+.conda/
+.env
+.env.*
+
+# Notebooks & checkpoints
+*.ipynb
+*.ipynb_checkpoints/
+
+# Build outputs
+build/
+dist/
+wheelhouse/
+
+# Logs & local artifacts
+logs/
+artifacts/
+outputs/
+reports/
+
+# Data (mount at runtime instead of baking into image)
+data/
+# If you want a tiny dataset baked in, uncomment exceptions:
+# !data/sample_logs/**
+# !data/intel/epss_latest.csv
+# !data/intel/cisa_kev.csv
+
+# Docker cache noise (optional)
+*.tar

@@ -3,6 +3,7 @@
 Usage:
     python -m src.analysis.run_analysis /path/to/hdfs/logs
 """
+import json
 import logging
 import re
 import sys
@@ -16,7 +17,7 @@ from jsonschema import ValidationError
 from src.analysis.drift import analyze_logs
 from src.analysis.validate import load_schema, validate_log_entry
 from src.common.pseudo import pseudonymize
-from src.ingest.template_extract import TemplateMiner
+from src.ingest.template_cache import TemplateMiner
 
 # Configure logging
 logging.basicConfig(
@@ -90,23 +91,30 @@ def load_hdfs_logs(log_dir: Path) -> pd.DataFrame:
                     
     return pd.DataFrame(records)
 
-def main(argv: List[str]):
-    if len(argv) != 2:
-        print(__doc__)
-        sys.exit(1)
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description='Run HDFS log analysis')
+    parser.add_argument('--input', required=True, help='Input JSONL file')
+    parser.add_argument('--out', required=True, help='Output directory')
+    parser.add_argument('--epss', help='EPSS data file')
+    parser.add_argument('--kev', help='KEV data file')
+    args = parser.parse_args()
         
     # Load schema
     global SCHEMA
     SCHEMA = load_schema('parsed_log.schema.json')
         
-    log_dir = Path(argv[1])
-    if not log_dir.is_dir():
-        logger.error(f"Directory not found: {log_dir}")
+    input_file = Path(args.input)
+    if not input_file.is_file():
+        logger.error(f"Input file not found: {input_file}")
         sys.exit(1)
+
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
         
     # Load logs
-    logger.info(f"Loading logs from {log_dir}")
-    df = load_hdfs_logs(log_dir)
+    logger.info(f"Loading logs from {input_file}")
+    df = pd.read_json(input_file, lines=True)
     logger.info(f"Loaded {len(df):,} log entries")
     
     # Run analysis
@@ -114,10 +122,11 @@ def main(argv: List[str]):
     results = analyze_logs(df)
     
     # Save results
-    output_file = log_dir / "analysis_results.json"
-    with open(output_file, 'w') as f:
-        json.dump(results, f, indent=2)
-    logger.info(f"Results saved to {output_file}")
+    for name, data in results.items():
+        output_file = out_dir / f"{name}.json"
+        with open(output_file, 'w') as f:
+            json.dump(data, f, indent=2)
+        logger.info(f"Saved {name} to {output_file}")
 
 if __name__ == '__main__':
-    main(sys.argv)
+    main()

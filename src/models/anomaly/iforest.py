@@ -3,6 +3,7 @@
 Detects anomalies in HDFS logs using windowed features.
 """
 import logging
+import os
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -41,11 +42,15 @@ class IForestModel:
     
     def __init__(self, config: Optional[IForestConfig] = None):
         self.config = config or IForestConfig()
+        # Use DOVAH_ANALYSIS_SEED from env or default to 42
+        seed = int(os.getenv("DOVAH_ANALYSIS_SEED", "42"))
         self.model = IsolationForest(
             n_estimators=self.config.n_estimators,
             contamination=self.config.contamination,
-            random_state=42
+            random_state=seed
         )
+        # StandardScaler doesn't have random_state, but numpy seed affects its internals
+        np.random.seed(seed)
         self.scaler = StandardScaler()
     
     def _extract_features(self, events: List[Dict]) -> pd.DataFrame:

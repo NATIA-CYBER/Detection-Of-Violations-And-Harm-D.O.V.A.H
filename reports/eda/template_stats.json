@@ -1,0 +1,42 @@
+{
+  "t1": {
+    "message": "Starting NameNode",
+    "component": {
+      "NameNode": 1
+    },
+    "level": {
+      "INFO": 1
+    },
+    "count": 1
+  },
+  "t2": {
+    "message": "Block blk_1234 received from /10.0.0.1",
+    "component": {
+      "DataNode": 1
+    },
+    "level": {
+      "INFO": 1
+    },
+    "count": 1
+  },
+  "t3": {
+    "message": "Slow disk detected on /data/disk1",
+    "component": {
+      "DataNode": 1
+    },
+    "level": {
+      "WARN": 1
+    },
+    "count": 1
+  },
+  "t4": {
+    "message": "Failed to process CVE-2023-1234 patch",
+    "component": {
+      "NameNode": 1
+    },
+    "level": {
+      "ERROR": 1
+    },
+    "count": 1
+  }
+}

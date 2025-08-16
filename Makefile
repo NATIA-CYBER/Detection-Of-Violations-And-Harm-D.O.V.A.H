@@ -1,4 +1,4 @@
-.PHONY: env up down ingest replay run eval export test lint clean eda
+.PHONY: env up down ingest replay run eval export test lint clean eda verify_day2
 
 # Environment Setup
 env:
@@ -66,3 +66,11 @@ eda:
 	mkdir -p reports/eda
 	python -m src.analysis.run_analysis --input tests/data/hdfs/sample.jsonl --out reports/eda
 	python -m src.eval.run_eval --baseline tests/data/hdfs/sample.jsonl --current tests/data/hdfs/sample.jsonl
+
+# Day 2 Verification
+verify_day2:
+	pytest -q tests/test_pii.py tests/test_schema.py
+	python -m src.analysis.run_analysis --input tests/data/hdfs/sample.jsonl --out reports/eda --epss data/intel/epss_latest.csv --kev data/intel/cisa_kev.csv
+	@[ $$(grep -E -ri "(<REDACTED:email>|<REDACTED:ipv[46]>)" reports/eda | wc -l) -gt 0 ] || (echo "PII check failed"; exit 1)
+	@[ -f reports/eda/template_stats.json ] && [ -f reports/eda/distribution_stats.json ] && [ -f reports/eda/spike_stats.json ] || (echo "Missing analysis outputs"; exit 1)
+	@echo "✅ Day-2 verification passed"

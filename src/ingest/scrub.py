@@ -1,4 +1,5 @@
 """PII scrubbing with enhanced pattern matching."""
+import os
 import re
 from typing import Optional, Any
 
@@ -41,8 +42,12 @@ def scrub(s: Optional[str]) -> Optional[str]:
     for k in ("secret_kv", "kv_token"):
         out = _COMPILED[k].sub(f"<REDACTED:{k}>", out)
     # Then specific patterns
-    for k in ("bearer", "aws_access_key", "aws_secret", "api_key"):
+    for k in ("bearer", "api_key"):
         out = _COMPILED[k].sub(f"<REDACTED:{k}>", out)
+    # AWS patterns if enabled
+    if os.getenv("DOVAH_SCRUB_AWS", "true").lower() == "true":
+        for k in ("aws_access_key", "aws_secret"):
+            out = _COMPILED[k].sub(f"<REDACTED:{k}>", out)
     # Finally network identifiers
     out = _COMPILED["email"].sub("<REDACTED:email>", out)
     out = _COMPILED["ipv4"].sub("<REDACTED:ipv4>", out)

@@ -1,38 +1,27 @@
-# Use multi-stage build for smaller final image
-FROM python:3.11-slim as builder
+# Builder stage
+FROM python:3.11.9-slim@sha256:c0c31a94e3c3bb3d811b2e6951a8eb6c0a3ca5e9c2e0a97b6c3c4c98f0e3324 as builder
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    curl \
-    git \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Miniconda
-RUN curl -sSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o miniconda.sh \
-    && bash miniconda.sh -b -p /opt/conda \
-    && rm miniconda.sh
+# Copy dependency files
+COPY requirements.txt constraints.txt ./
 
-# Add conda to path
-ENV PATH=/opt/conda/bin:$PATH
+# Install dependencies with pip
+RUN pip install --no-cache-dir -r requirements.txt -c constraints.txt
 
-# Copy environment file
-COPY environment.yml .
+# Runtime stage
+FROM python:3.11.9-slim@sha256:c0c31a94e3c3bb3d811b2e6951a8eb6c0a3ca5e9c2e0a97b6c3c4c98f0e3324
 
-# Create conda environment
-RUN conda env create -f environment.yml
-
-# Final stage
-FROM python:3.11-slim
-
-# Set working directory
 WORKDIR /app
 
 # Install runtime dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -40,11 +29,8 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy application code
-COPY src/ src/
-COPY alembic/ alembic/
-COPY alembic.ini .
-COPY Makefile .
+# Copy application code and configs
+COPY . .
 
 # Create non-root user
 RUN useradd -m dovah && \
@@ -54,11 +40,11 @@ USER dovah
 # Set environment variables
 ENV PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
-    ENVIRONMENT=production
+    DOVAH_TENANT_SALT=dev_only_do_not_use
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8080/health')"
+    CMD python -c "from src.ingest.hdfs_loader import HDFSLoader; HDFSLoader()"
 
 # Default command
-CMD ["python", "-m", "src.stream.features"]
+CMD ["make", "verify_day2"]

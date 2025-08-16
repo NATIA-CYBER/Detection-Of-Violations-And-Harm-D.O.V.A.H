@@ -127,7 +127,48 @@ def analyze_drift(df: pd.DataFrame) -> list:
 
     return drift_stats
 
-def analyze_logs(df: pd.DataFrame) -> dict:
+def analyze_logs(df):
+    """Run analysis on log DataFrame.
+    
+    Returns dict with analysis results:
+    - template_stats.json: Template frequencies and patterns
+    - distribution_stats.json: Component/level distributions
+    - spike_stats.json: Volume anomalies
+    """
+    results = {}
+    
+    # Template analysis
+    template_stats = df.groupby('template_id').agg({
+        'message': 'first',
+        'component': lambda x: x.value_counts().to_dict(),
+        'level': lambda x: x.value_counts().to_dict()
+    })
+    template_stats['count'] = df.groupby('template_id').size()
+    template_stats = template_stats.to_dict('index')
+    results['template_stats'] = template_stats
+    
+    # Distribution analysis 
+    distribution_stats = {
+        'components': df['component'].value_counts().to_dict(),
+        'levels': df['level'].value_counts().to_dict(),
+        'hosts': df['host'].value_counts().to_dict()
+    }
+    results['distribution_stats'] = distribution_stats
+    
+    # Volume analysis
+    df['minute'] = pd.to_datetime(df['timestamp']).dt.floor('min')
+    volume = df.groupby('minute').size()
+    mean, std = volume.mean(), volume.std()
+    spikes = volume[volume > mean + 2*std]
+    spike_stats = {
+        'threshold': float(mean + 2*std),
+        'spikes': spikes.to_dict()
+    }
+    results['spike_stats'] = spike_stats
+    
+    return results
+
+def analyze_logs_full(df: pd.DataFrame) -> dict:
     """Run full analysis suite on HDFS logs."""
     return {
         'templates': analyze_templates(df),

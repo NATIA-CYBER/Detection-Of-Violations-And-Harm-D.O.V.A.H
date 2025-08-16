@@ -1,8 +1,23 @@
 version: '3.8'
 
 services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PYTHON_VERSION: 3.11.9
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=postgresql+psycopg://dovah:dovah@postgres:5432/dovah
+      - DOVAH_TENANT_SALT=dev_only_do_not_use
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   postgres:
-    image: ankane/pgvector:latest
+    image: postgres:16.1
     environment:
       POSTGRES_USER: dovah
       POSTGRES_PASSWORD: dovah

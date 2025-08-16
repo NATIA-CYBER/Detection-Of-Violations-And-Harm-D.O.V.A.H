@@ -7,13 +7,68 @@ Real-time, drift-aware security analytics:
 - Summarize alerts & export signed evidence packs
 - Report precision/recall/precision@k/FP/1k and **p95 latency**
 
+## Quick Start (Docker)
+
+### Prerequisites
+- Docker Desktop 4.30+ (or Docker Engine 24+) is running
+- ≥ 2 GB free RAM (4 GB recommended) and ~2 GB disk for build
+- Git installed (and `make` recommended)
+- Internet access for base images
+  - Windows: enable **WSL2** backend
+  - Apple Silicon: use `--platform linux/amd64` if needed
+
+To verify the system:
+
+```bash
+# Build the container
+docker build -t dovah .
+
+# Run verification
+docker run --rm -v $PWD:/app dovah make verify_day2
+```
+
+This will:
+- Build a reproducible environment with all dependencies
+- Run core PII and schema tests
+- Execute analysis with sample data
+- Verify PII scrubbing and outputs
+
+### Docker Troubleshooting
+
+- **Tests fail or Out of Memory**
+  - Increase Docker Desktop memory (Resources → 4-6 GB)
+  - Run with limit: `docker run -m 4g --rm -v $PWD:/app dovah make verify_day2`
+
+- **Slow Build**
+  - Enable BuildKit: `DOCKER_BUILDKIT=1 docker build .`
+  - Pre-pull base: `docker pull python:3.11.9-slim`
+
+- **Volume Mount Issues**
+  - macOS/Windows: Check Docker Desktop → File sharing
+  - Linux: Use `-v "$PWD:/app:Z"` for SELinux
+  - Permission errors: `--user $(id -u):$(id -g)`
+
+- **Apple Silicon Issues**
+  - Build: `docker build --platform linux/amd64 .`
+  - Run: `docker run --platform linux/amd64 ...`
+
+- **Clean Rebuild**
+  - `docker compose down -v --rmi local && docker compose up --build`
+  - Or: `docker system prune -f && docker build .`
+
+- **View Logs**
+  - `docker compose logs -f`
+  - Or: `docker logs <container-id>`
+
+For development or running specific components, see the sections below.
+
 ---
 
 ## 1) Requirements
-- Conda (Anaconda/Miniconda/Mamba), Python **3.11**
-- PostgreSQL **14+**
+- Conda (Anaconda/Miniconda/Mamba), Python **3.11.9**
+- PostgreSQL **16.1**
 - Git, Make (optional)
-- (Optional) Docker for a local DB
+- Docker Desktop 4.30+ or Docker Engine 24+ for containerized builds
 
 ---
 
@@ -33,7 +88,37 @@ conda-lock install -n dovah conda-lock.yml
 conda activate dovah
 ```
 
-## 3) Database configuration (Alembic owns the schema)
+## 3) Docker Setup
+
+### Quick Verification
+```bash
+# Build and verify in one go
+docker-compose run --rm app make verify_day2
+```
+
+### Full Development Setup
+```bash
+# Start all services
+docker-compose up -d
+
+# Run specific components
+docker-compose run --rm app python -m src.ingest.hdfs_loader
+docker-compose run --rm app python -m src.analysis.run_analysis
+
+# Run tests
+docker-compose run --rm app pytest
+
+# Stop all services
+docker-compose down
+```
+
+### Environment Variables
+Key variables (all configured in docker-compose.yml):
+- `DOVAH_TENANT_SALT`: Set to 'dev_only_do_not_use' for deterministic testing
+- `DOVAH_SESSION_WINDOW`: Session bucket size in seconds (default: 300)
+- `DATABASE_URL`: PostgreSQL connection string
+
+## 4) Database configuration (Alembic owns the schema)
 ```bash
 # Local Postgres (Docker example)
 docker run --name dovah-db -e POSTGRES_USER=dovah -e POSTGRES_PASSWORD=dovah \

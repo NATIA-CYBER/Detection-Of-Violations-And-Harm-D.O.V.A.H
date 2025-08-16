@@ -52,6 +52,13 @@ htmlcov/
 # Logs and data
 *.log
 logs/
+# Allow pre-generated analysis artifacts
+!reports/eda/
+!reports/eda/*.json
+
+# Other reports and data
+reports/*
+!reports/eda/
 data/
 !data/.gitkeep
 !tests/data/

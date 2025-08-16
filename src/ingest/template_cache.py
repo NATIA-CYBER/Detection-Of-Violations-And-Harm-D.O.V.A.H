@@ -1,12 +1,23 @@
-"""Template extraction with persistent caching."""
+"""Template extraction with persistent caching and pattern matching."""
 import json
 import os
+import re
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 from drain3 import TemplateMiner
 from ..common.pseudo import hmac_sha256_hex, get_salt
 
 class TemplateCache:
+    # Common variable patterns
+    PATTERNS = {
+        'block_id': re.compile(r'\bblk_\d+\b'),
+        'uuid': re.compile(r'\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b'),
+        'ip_port': re.compile(r'/?(\b(?:\d{1,3}\.){3}\d{1,3}\b)(?::(\d+))?'),
+        'hex': re.compile(r'\b[0-9a-fA-F]{6,}\b'),
+        'number': re.compile(r'\b\d+\b'),
+        'block_ref': re.compile(r'\bblock \d+\b')
+    }
+    
     def __init__(self, cache_dir: Path):
         self.cache_dir = cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -31,6 +42,25 @@ class TemplateCache:
         with open(cache_file, 'w') as f:
             json.dump(self.cache, f)
             
+    def _normalize_pattern(self, message: str) -> str:
+        """Normalize message by replacing variable parts with wildcards."""
+        if not message:
+            return ''
+            
+        template = message
+        # Replace block IDs
+        template = self.PATTERNS['block_id'].sub('blk_*', template)
+        # Replace UUIDs
+        template = self.PATTERNS['uuid'].sub('*', template)
+        # Replace IP addresses with ports
+        template = self.PATTERNS['ip_port'].sub(lambda m: '*' + (':*' if m.group(2) else ''), template)
+        # Replace hex and numbers
+        template = self.PATTERNS['hex'].sub('*', template)
+        template = self.PATTERNS['number'].sub('*', template)
+        # Clean up block references
+        template = self.PATTERNS['block_ref'].sub('block *', template)
+        return template
+        
     def extract_template(self, message: str) -> Tuple[int, str]:
         """Extract template ID and pattern, using cache if available.
         
@@ -49,11 +79,12 @@ class TemplateCache:
                 self.cache[cache_key]['pattern']
             )
             
-        # Cache miss - extract template
-        result = self.miner.add_log_message(message)
+        # Cache miss - normalize and extract template
+        normalized = self._normalize_pattern(message)
+        result = self.miner.add_log_message(normalized)
         template = {
-            'id': result['cluster_id'],
-            'pattern': result['template_mined']
+            'id': result.cluster_id,
+            'pattern': result.template_mined
         }
         
         # Update cache

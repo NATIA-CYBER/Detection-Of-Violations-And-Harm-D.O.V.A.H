@@ -49,3 +49,17 @@ def pseudo_user(user: Optional[str]) -> Optional[str]:
     if not user:
         return None
     return "u_" + hmac_sha256_hex(user, get_salt())[:16]
+
+def pseudonymize(value: Optional[str], prefix: str = "") -> Optional[str]:
+    """Generic pseudonymization function using environment salt.
+    
+    Args:
+        value: Value to pseudonymize
+        prefix: Optional prefix for the pseudonymized value
+        
+    Returns:
+        Pseudonymized value or None if input is None
+    """
+    if not value:
+        return None
+    return prefix + hmac_sha256_hex(value, get_salt())[:16]

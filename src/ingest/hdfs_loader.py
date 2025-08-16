@@ -16,12 +16,13 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 import numpy as np
-
 import pandas as pd
 from drain3 import TemplateMiner
 from pydantic import BaseModel, Field
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from tenacity import retry, stop_after_attempt, wait_exponential
+
+from ..common.pseudo import get_salt, hmac_sha256_hex
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -52,21 +53,7 @@ class HDFSLoader:
         r"(?:\.(?P<subsec>\d{1,6}))?(?:Z|[+-]\d{2}:?\d{2})?"
     )
     
-    # PII patterns
-    PII_PATTERNS = {
-        # RFC5322 email
-        "email": re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"),
-        # API keys, tokens (common formats)
-        "token": re.compile(r"(?i)(?:key|token|api[_-]?key)[_-]?(?:id)?\s*[=:]\s*[A-Za-z0-9]{16,}"),
-        # AWS-style secrets
-        "aws_secret": re.compile(r"(?i)aws[_-]?(?:secret|key)[_-]?(?:id|access)?[_-]?(?:key)?\s*[=:]\s*[A-Za-z0-9/+=]{20,}"),
-        # Password in config/logs
-        "password": re.compile(r"(?i)pass(?:word)?[_-]?(?:key)?\s*[=:]\s*\S+"),
-        # Private keys
-        "private_key": re.compile(r"-----BEGIN (?:RSA )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA )?PRIVATE KEY-----"),
-        # IP addresses (optional)
-        "ip": re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
-    }
+    # Use unified scrubbing from scrub.py
     
     # Advanced CVE patterns
     CVE_PATTERNS = {
@@ -109,6 +96,9 @@ class HDFSLoader:
                 "DOVAH_HMAC_KEY environment variable not set. "
                 "This must be a 64-character hex string."
             )
+            
+        # Get session window from environment (default 5 minutes)
+        self.session_window = int(os.getenv("DOVAH_SESSION_WINDOW", "300"))
         
         try:
             # Convert hex to bytes
@@ -178,26 +168,13 @@ class HDFSLoader:
         return h.hexdigest()
     
     def scrub_pii(self, text: str) -> str:
-        """Remove or pseudonymize PII from text."""
-        if not text:
-            return text
-            
-        # Start with the original text
-        scrubbed = text
+        """Remove or pseudonymize PII from text.
         
-        # Apply each PII pattern
-        for pattern_name, pattern in self.PII_PATTERNS.items():
-            matches = pattern.finditer(scrubbed)
-            for match in matches:
-                # Get the full match
-                pii = match.group(0)
-                # Create a pseudonym
-                pseudonym = self.pseudonymize(pii)
-                # Replace with type indicator and truncated hash
-                replacement = f"<{pattern_name}:{pseudonym[:8]}>"
-                scrubbed = scrubbed.replace(pii, replacement)
-        
-        return scrubbed
+        Uses the unified scrub.py implementation for consistent PII handling
+        across all components.
+        """
+        from .scrub import scrub
+        return scrub(text)
         
     def extract_cves(self, text: str) -> List[str]:
         """Extract CVE IDs from text.
@@ -209,7 +186,7 @@ class HDFSLoader:
             return []
             
         # Find all CVE matches
-        matches = self.CVE_PATTERN.finditer(text)
+        matches = self.CVE_PATTERNS['cve'].finditer(text)
         
         # Extract and normalize CVE IDs
         cves = []
@@ -419,7 +396,7 @@ class HDFSLoader:
                 "component": comp,
                 "template_id": template_id,
                 "message": scrubbed_msg,  # Store scrubbed message
-                "session_id": self.pseudonymize(f"{host}:{ts.date()}"),
+                "session_id": self.pseudonymize(f"{host}:{int(ts.timestamp() // self.session_window)}"),
                 "level": level,
                 "labels": {
                     "cves": cves  # Add CVEs for EPSS/KEV enrichment

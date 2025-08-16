@@ -1,0 +1,16 @@
+{
+  "components": {
+    "NameNode": 2,
+    "DataNode": 2
+  },
+  "levels": {
+    "INFO": 2,
+    "WARN": 1,
+    "ERROR": 1
+  },
+  "hosts": {
+    "namenode1.hadoop.local": 2,
+    "datanode1.hadoop.local": 1,
+    "datanode2.hadoop.local": 1
+  }
+}
