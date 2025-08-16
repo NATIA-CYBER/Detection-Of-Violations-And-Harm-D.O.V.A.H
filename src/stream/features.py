@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import csv
+from jsonschema import validate, ValidationError
 
 # Configure logging
 logging.basicConfig(
@@ -25,7 +26,7 @@ logging.basicConfig(
 )
 
 def process_window(
-    window_events: list, latency_log_writer=None
+    window_events: list, prev_window_components: set, seen_templates: set, recent_event_counts: deque, latency_log_writer=None
 ) -> dict:
     """Calculates and emits features for a single window of events."""
     if not window_events:
@@ -39,15 +40,30 @@ def process_window(
 
     # --- Template Features ---
     template_counts = Counter(e.get('template_id') for e in window_events)
+    current_window_templates = set(template_counts.keys())
     unique_templates = len(template_counts)
     rare_templates = sum(1 for count in template_counts.values() if count == 1)
     rare_rate = rare_templates / event_count if event_count > 0 else 0
 
-    # --- Component Churn (temporarily disabled for performance testing) ---
-    component_churn = 0
+    # --- Component Churn ---
+    current_window_components = {e.get('component') for e in window_events if e.get('component')}
+    new_components = current_window_components - prev_window_components
+    disappeared_components = prev_window_components - current_window_components
+    component_churn = len(new_components) + len(disappeared_components)
 
     # --- CEP Features ---
+    # Unseen template detection
+    new_templates = current_window_templates - seen_templates
+    is_unseen_template = len(new_templates) > 0
+
+    # Burst detection
     is_burst = False
+    if recent_event_counts:
+        avg_count = np.mean(recent_event_counts)
+        std_count = np.std(recent_event_counts)
+        # Define burst as > 2 standard deviations above the mean, with a minimum threshold
+        if event_count > avg_count + 2 * std_count and event_count > 20:
+            is_burst = True
 
     # --- Latency Instrumentation ---
     processing_end_ts = datetime.now(timezone.utc)
@@ -67,12 +83,16 @@ def process_window(
         "rare_template_rate": round(rare_rate, 4),
         "component_churn": component_churn,
         "is_burst": is_burst,
+        "is_unseen_template": is_unseen_template,
         "p50_ingest_latency_ms": round(p50_ingest_ms, 2),
         "p95_ingest_latency_ms": round(p95_ingest_ms, 2),
         "p50_feature_latency_ms": round(p50_feature_ms, 2),
         "p95_feature_latency_ms": round(p95_feature_ms, 2),
         # Internal stats for next window's calculation
-        "_internal": {}
+        "_internal": {
+            "components": current_window_components,
+            "templates": current_window_templates
+        }
     }
 
     if latency_log_writer:
@@ -95,14 +115,27 @@ def process_window(
     
     return feature_record
 
-def stream_processor(window_size_sec: int, window_stride_sec: float, latency_log_file: str = None):
+def stream_processor(
+    window_size_sec: int, window_stride_sec: float, latency_log_file: str = None, schema_path: str = "parsed_log.schema.json"
+):
     """Reads events from stdin, windows them, and computes features in a streaming fashion."""
     logging.info(f"Starting stream processing with {window_size_sec}s windows and {window_stride_sec}s stride.")
+
+    # Load schema for validation
+    try:
+        with open(schema_path, "r") as f:
+            schema = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logging.error(f"Could not load or parse schema '{schema_path}': {e}")
+        sys.exit(1)
 
     # State variables
     events_buffer = deque()
     first_event_time = None
     next_window_start = None
+    prev_window_components = set()
+    seen_templates = set()
+    recent_event_counts = deque(maxlen=10)  # For burst detection
 
     # Setup latency logging
     latency_file = None
@@ -120,6 +153,7 @@ def stream_processor(window_size_sec: int, window_stride_sec: float, latency_log
     for line in sys.stdin:
         try:
             event = json.loads(line)
+            validate(instance=event, schema=schema)
             received_ts = datetime.now(timezone.utc)
             event_ts = datetime.fromisoformat(event['timestamp'])
             replay_ts = datetime.fromisoformat(event['replay_ts'])
@@ -129,8 +163,8 @@ def stream_processor(window_size_sec: int, window_stride_sec: float, latency_log
                 'replay_ts': replay_ts,
                 'original_ts': event_ts
             }
-        except (json.JSONDecodeError, KeyError, ValueError) as e:
-            logging.warning(f"Skipping invalid event line: {line} ({e})")
+        except (json.JSONDecodeError, KeyError, ValueError, ValidationError) as e:
+            logging.warning(f"Skipping invalid event: {line.strip()} ({e})")
             continue
 
         if first_event_time is None:
@@ -149,7 +183,13 @@ def stream_processor(window_size_sec: int, window_stride_sec: float, latency_log
 
             if events_in_window:
                 logging.info(f"Processing window ending {window_end.isoformat()} with {len(events_in_window)} events.")
-                process_window(events_in_window, latency_log_writer)
+                feature_record = process_window(
+                    events_in_window, prev_window_components, seen_templates, recent_event_counts, latency_log_writer
+                )
+                if feature_record and '_internal' in feature_record:
+                    prev_window_components = feature_record['_internal'].get('components', set())
+                    seen_templates.update(feature_record['_internal'].get('templates', set()))
+                    recent_event_counts.append(feature_record['event_count'])
 
             # Slide the window forward
             next_window_start += timedelta(seconds=window_stride_sec)
@@ -161,7 +201,7 @@ def stream_processor(window_size_sec: int, window_stride_sec: float, latency_log
     # Process any remaining events in the buffer
     if events_buffer:
         logging.info(f"Processing final window with {len(events_buffer)} events.")
-        process_window(list(events_buffer), latency_log_writer)
+        process_window(list(events_buffer), prev_window_components, seen_templates, recent_event_counts, latency_log_writer)
 
     if latency_file:
         latency_file.close()
