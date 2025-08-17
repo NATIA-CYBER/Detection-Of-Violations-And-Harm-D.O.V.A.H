@@ -32,6 +32,11 @@ st.markdown(f"""
   --app-top: 28px:
   --app-pad-x: 28px;
   --container-max: 1600px;
+  .block-container{
+  padding-top: var(--app-top) !important;
+  padding-left: var(--app-pad-x) !important;
+  padding-right: var(--app-pad-x) !important;
+  max-width: var(--container-max); 
 }}
 
 html, body, [data-testid="stAppViewContainer"] {{ background:var(--bg); color:var(--text); }}
