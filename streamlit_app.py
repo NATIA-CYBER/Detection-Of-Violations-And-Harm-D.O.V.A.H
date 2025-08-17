@@ -27,9 +27,13 @@ st.set_page_config(page_title="DOVAH — Console", page_icon=ICON_PATH, layout="
 st.markdown(f"""
 <style>
 :root {{
-  --bg:#0b0f19; --card:#121826; --muted:#9aa4af; --text:#e5e7eb; --accent:#7c3aed;
+  --bg:#0b0f18; --card:#121826; --muted:#9aa4af; --text:#e5e7eb; --accent:#7c3aed;
   --border:#1f2937; --ok:#10b981; --warn:#f59e0b; --bad:#ef4444;
+  --app-top: 28px:
+  --app-pad-x: 28px;
+  --container-max: 1600px;
 }}
+
 html, body, [data-testid="stAppViewContainer"] {{ background:var(--bg); color:var(--text); }}
 .block-container {{ padding-top:1rem; }}
 
