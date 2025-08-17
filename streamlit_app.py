@@ -4,10 +4,10 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-# ---------- Paths ----------
-ICON_PATH = Path("icons/2.png")   # ensure this file exists & is committed
 
-# ---------- Helpers ----------
+ICON_PATH = Path("icons/2.png")   
+
+
 def data_uri(path: Path) -> str:
     if not path.exists():
         return ""
@@ -18,14 +18,14 @@ def data_uri(path: Path) -> str:
 
 ICON_URI = data_uri(ICON_PATH)
 
-# ---------- Page config (your icon as favicon) ----------
+
 st.set_page_config(
     page_title="Detection Of Violations And Harm — Console",
     page_icon=str(ICON_PATH),
     layout="wide"
 )
 
-# ---------- CSS (no f-string; fixed syntax) ----------
+
 st.markdown("""
 <style>
 :root{
