@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 
 # ---------- Paths ----------
-ICON_PATH = "assets/dovah.png"   # <-- your file
+ICON_PATH = "icons/2.png"   
 
 # ---------- Helpers ----------
 def data_uri(path: str) -> str:
@@ -17,13 +17,13 @@ def data_uri(path: str) -> str:
     mime = "image/svg+xml" if ext == "svg" else f"image/{ext or 'png'}"
     return f"data:{mime};base64,{b64}"
 
-ICON_URI = data_uri(icons/2,png)
+ICON_URI = data_uri(ICON_PATH)
 
 # ---------- Page config (your icon as favicon) ----------
 # Streamlit accepts a local file path for page_icon.
-st.set_page_config(page_title="Detection Of Violations Aand Harm — Console", page_icon=ICON_PATH, layout="wide")
+st.set_page_config(page_title="DOVAH — Console", page_icon=ICON_PATH, layout="wide")
 
-# ---------- CSS () ----------
+# ---------- CSS (richer, still light) ----------
 st.markdown(f"""
 <style>
 :root {{
