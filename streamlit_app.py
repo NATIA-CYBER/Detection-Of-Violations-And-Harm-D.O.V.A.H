@@ -5,77 +5,91 @@ import pandas as pd
 import streamlit as st
 
 # ---------- Paths ----------
-ICON_PATH = "icons/2.png"   
+ICON_PATH = Path("icons/2.png")   # ensure this file exists & is committed
 
 # ---------- Helpers ----------
-def data_uri(path: str) -> str:
-    p = Path(path)
-    if not p.exists():
+def data_uri(path: Path) -> str:
+    if not path.exists():
         return ""
-    b64 = base64.b64encode(p.read_bytes()).decode()
-    ext = p.suffix.lower().lstrip(".")
-    mime = "image/svg+xml" if ext == "svg" else f"image/{ext or 'png'}"
+    b64 = base64.b64encode(path.read_bytes()).decode()
+    ext = path.suffix.lower().lstrip(".") or "png"
+    mime = "image/svg+xml" if ext == "svg" else f"image/{ext}"
     return f"data:{mime};base64,{b64}"
 
 ICON_URI = data_uri(ICON_PATH)
 
 # ---------- Page config (your icon as favicon) ----------
-# Streamlit accepts a local file path for page_icon.
-st.set_page_config(page_title="DOVAH — Console", page_icon=ICON_PATH, layout="wide")
+st.set_page_config(
+    page_title="Detection Of Violations And Harm — Console",
+    page_icon=str(ICON_PATH),
+    layout="wide"
+)
 
-# ---------- CSS (richer, still light) ----------
-st.markdown(f"""
+# ---------- CSS (no f-string; fixed syntax) ----------
+st.markdown("""
 <style>
-:root {{
+:root{
   --bg:#0b0f18; --card:#121826; --muted:#9aa4af; --text:#e5e7eb; --accent:#7c3aed;
   --border:#1f2937; --ok:#10b981; --warn:#f59e0b; --bad:#ef4444;
-  --app-top: 28px:
+  --app-top: 28px;
   --app-pad-x: 28px;
   --container-max: 1600px;
-  .block-container{
+}
+
+html, body, [data-testid="stAppViewContainer"]{ background:var(--bg); color:var(--text); }
+
+/* Global content padding + max width */
+.block-container{
   padding-top: var(--app-top) !important;
   padding-left: var(--app-pad-x) !important;
   padding-right: var(--app-pad-x) !important;
-  max-width: var(--container-max); 
-}}
+  max-width: var(--container-max);
+}
 
-html, body, [data-testid="stAppViewContainer"] {{ background:var(--bg); color:var(--text); }}
-.block-container {{ padding-top:1rem; }}
+/* Hide Streamlit chrome */
+#MainMenu, header, footer{ visibility:hidden; }
 
-# chrome
-#MainMenu, header, footer {{ visibility:hidden; }}
-
-.navbar {{
+/* Navbar */
+.navbar{
+  margin-top: 12px;
+  margin-bottom: 12px;
   display:flex; justify-content:space-between; align-items:center; gap:.75rem;
   background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.00));
   border:1px solid var(--border); border-radius:16px; padding:.7rem .9rem; backdrop-filter:blur(6px);
   box-shadow:0 6px 18px rgba(0,0,0,.25);
-}}
-.brand {{ display:flex; align-items:center; gap:.5rem; font-weight:700; letter-spacing:.3px; }}
-.brand .logo {{ width:18px; height:18px; border-radius:4px; }}
-.tabs {{ display:flex; gap:.6rem; }}
-.tab {{ padding:.35rem .6rem; border:1px solid var(--border); border-radius:999px; color:var(--muted); text-decoration:none; }}
-.tab.active {{ border-color:var(--accent); color:#fff; background:rgba(124,58,237,.15); }}
+  position: sticky; top: 10px; z-index: 100;
+}
 
-.card {{
-  background:var(--card); border:1px solid var(--border); border-radius:16px; padding:.8rem .9rem;
-  box-shadow:0 8px 24px rgba(0,0,0,.22);
-}}
-.kpi [data-testid="stMetricValue"] {{ color:var(--text); }}
+/* Brand */
+.brand{ display:flex; align-items:center; gap:.5rem; font-weight:700; letter-spacing:.3px; }
+.brand .logo{ width:20px; height:20px; border-radius:6px; }
 
-.badge {{ display:inline-block; padding:.15rem .5rem; border-radius:999px; font-size:.75rem; }}
-.badge.ok {{ background:rgba(16,185,129,.18); border:1px solid rgba(16,185,129,.35); }}
-.badge.warn {{ background:rgba(245,158,11,.18); border:1px solid rgba(245,158,11,.35); }}
-.badge.bad {{ background:rgba(239,68,68,.18); border:1px solid rgba(239,68,68,.35); }}
+/* Tabs row look */
+.tabs{ display:flex; gap:.6rem; }
+.tab{ padding:.35rem .6rem; border:1px solid var(--border); border-radius:999px; color:var(--muted); text-decoration:none; }
+.tab.active{ border-color:var(--accent); color:#fff; background:rgba(124,58,237,.15); }
 
-.caption-muted {{ color:var(--muted); }}
+/* Cards & metrics */
+.card{ background:var(--card); border:1px solid var(--border); border-radius:16px; padding:.8rem .9rem;
+       box-shadow:0 8px 24px rgba(0,0,0,.22); }
+.kpi [data-testid="stMetricValue"]{ color:var(--text); }
+
+.badge{ display:inline-block; padding:.15rem .5rem; border-radius:999px; font-size:.75rem; }
+.badge.ok{ background:rgba(16,185,129,.18); border:1px solid rgba(16,185,129,.35); }
+.badge.warn{ background:rgba(245,158,11,.18); border:1px solid rgba(245,158,11,.35); }
+.badge.bad{ background:rgba(239,68,68,.18); border:1px solid rgba(239,68,68,.35); }
+
+.caption-muted{ color:var(--muted); }
+
+/* Keep top content visible when jumping/scrolling */
+html{ scroll-padding-top: 80px; }
 </style>
 """, unsafe_allow_html=True)
 
 # ---------- Navbar with your icon ----------
 with st.container():
     right = f"Streamlit {st.__version__}"
-    brand_img = f'<img class="logo" src="{ICON_URI}">' if ICON_URI else ''
+    brand_img = f'<img class="logo" src="{ICON_URI}" alt="DOVAH">' if ICON_URI else ''
     st.markdown(
         f"""
         <div class="navbar">
@@ -110,7 +124,7 @@ def mock_drift():
         {"feature":"ops_per_sec","window_start":"2025-08-15T00:00:00Z","window_end":"2025-08-15T12:00:00Z","psi":0.18,"ks":0.11,"status":"ok"}
     ])
 
-# ---------- Tabs (same content structure as before) ----------
+# ---------- Tabs ----------
 tab_overview, tab_alerts, tab_drift, tab_about = st.tabs(["Overview", "Alerts", "Drift", "About"])
 
 # ======= OVERVIEW =======
