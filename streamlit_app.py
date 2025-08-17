@@ -1,6 +1,10 @@
 import os
 import pandas as pd
 import streamlit as st
+# ensure local packages (utils/, etc.) are importable
+import sys, pathlib
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
 
 from utils.ui import load_css, render_nav, section_header, kpi_cols
 from utils.db import try_read_alert_counts_by_minute, try_read_recent_alerts
