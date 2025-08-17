@@ -114,6 +114,11 @@ def replay_events(
     logging.info(f"Warm-up complete. Sent {warmup_events_sent} events.")
 
     # --- Steady-State Run ---
+    # If not looping, the event_stream generator was consumed by the warm-up.
+    # We create a new one for the main run. If looping, we continue with the same generator.
+    if not do_loop:
+        event_stream = _stream_events(input_file, do_loop, do_shuffle)
+
     logging.info(f"Starting steady-state run for {run_duration_sec} seconds...")
     start_run_time = time.time()
     deadline = start_run_time + run_duration_sec
