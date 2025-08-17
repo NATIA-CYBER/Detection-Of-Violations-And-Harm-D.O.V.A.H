@@ -65,16 +65,6 @@ def process_window(
         if event_count > avg_count + 2 * std_count and event_count > 20:
             is_burst = True
 
-    # --- Latency Instrumentation ---
-    processing_end_ts = datetime.now(timezone.utc)
-    ingest_latencies = [(e['_internal']['received_ts'] - e['_internal']['replay_ts']).total_seconds() for e in window_events]
-    feature_latencies = [(processing_end_ts - e['_internal']['received_ts']).total_seconds() for e in window_events]
-
-    p50_ingest_ms = np.percentile(ingest_latencies, 50) * 1000 if ingest_latencies else 0
-    p95_ingest_ms = np.percentile(ingest_latencies, 95) * 1000 if ingest_latencies else 0
-    p50_feature_ms = np.percentile(feature_latencies, 50) * 1000 if feature_latencies else 0
-    p95_feature_ms = np.percentile(feature_latencies, 95) * 1000 if feature_latencies else 0
-
     feature_record = {
         "window_start": window_start.isoformat(),
         "window_end": window_end.isoformat(),
@@ -84,24 +74,27 @@ def process_window(
         "component_churn": component_churn,
         "is_burst": is_burst,
         "is_unseen_template": is_unseen_template,
-        "p50_ingest_latency_ms": round(p50_ingest_ms, 2),
-        "p95_ingest_latency_ms": round(p95_ingest_ms, 2),
-        "p50_feature_latency_ms": round(p50_feature_ms, 2),
-        "p95_feature_latency_ms": round(p95_feature_ms, 2),
-        # Internal stats for next window's calculation
-        "_internal": {
-            "components": current_window_components,
-            "templates": current_window_templates
-        }
+    }
+
+    # Add detailed latency instrumentation for acceptance criteria
+    emit_ts = datetime.now(timezone.utc)
+    last_replay_ts = max(e['_internal']['replay_ts'] for e in window_events)
+    lat_ms = (emit_ts - last_replay_ts).total_seconds() * 1000.0
+
+    feature_record["emit_ts"] = emit_ts.isoformat()
+    feature_record["last_replay_ts"] = last_replay_ts.isoformat()
+    feature_record["lat_ms"] = round(lat_ms, 1)
+
+    # Internal stats for next window's calculation
+    feature_record["_internal"] = {
+        "components": current_window_components,
+        "templates": current_window_templates
     }
 
     if latency_log_writer:
         latency_log_writer.writerow({
             'window_end_ts': window_end.isoformat(),
-            'p50_ingest_ms': round(p50_ingest_ms, 2),
-            'p95_ingest_ms': round(p95_ingest_ms, 2),
-            'p50_feature_ms': round(p50_feature_ms, 2),
-            'p95_feature_ms': round(p95_feature_ms, 2),
+            'lat_ms': round(lat_ms, 1),
         })
 
     # Emit feature record to stdout (without internal fields)
@@ -153,14 +146,19 @@ def stream_processor(
     for line in sys.stdin:
         try:
             event = json.loads(line)
+
+            # Pop replay_ts for validation. It's not in the formal schema.
+            replay_ts_str = event.pop('replay_ts', None)
             validate(instance=event, schema=schema)
+
+            # Timestamps for latency calculation
             received_ts = datetime.now(timezone.utc)
             event_ts = datetime.fromisoformat(event['timestamp'])
-            replay_ts = datetime.fromisoformat(event['replay_ts'])
+            replay_ts_dt = datetime.fromisoformat(replay_ts_str) if replay_ts_str else received_ts
 
             event['_internal'] = {
                 'received_ts': received_ts,
-                'replay_ts': replay_ts,
+                'replay_ts': replay_ts_dt,
                 'original_ts': event_ts
             }
         except (json.JSONDecodeError, KeyError, ValueError, ValidationError) as e:
