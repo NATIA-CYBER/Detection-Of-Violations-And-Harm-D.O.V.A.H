@@ -7,9 +7,9 @@
 
 html, body, [data-testid="stAppViewContainer"]{ background:var(--bg); color:var(--text); }
 .block-container{
-  padding-top: var(--app-top) !important;
-  padding-left: var(--app-pad-x) !important;
-  padding-right: var(--app-pad-x) !important;
+  padding-top: var(--app-top) 
+  padding-left: var(--app-pad-x)
+  padding-right: var(--app-pad-x)
   max-width: var(--container-max);
 }
 
