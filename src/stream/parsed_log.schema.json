@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DOVAH Parsed Log Event (stream v1)",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "timestamp": { "type": "string", "format": "date-time" },
+
+    "template_id": { "type": ["string", "number", "null"] },
+    "component":   { "type": ["string", "null"] },
+    "host":        { "type": ["string", "null"] },
+    "level":       { "type": ["string", "null"], "enum": ["INFO","WARN","ERROR", null] },
+    "message":     { "type": ["string", "null"] },
+    "session_id":  { "type": ["string", "null"] },
+    "dedup_key":   { "type": ["string", "null"] },
+    "rule":        { "type": ["string", "null"] },
+    "severity":    { "type": ["string", "null"] },
+    "score":       { "type": ["number", "string", "null"] },
+    "epss":        { "type": ["number", "string", "null"] },
+    "kev":         { "type": ["boolean", "null"] },
+    "mitre":       { "type": ["string", "array", "null"] },
+    "summary":     { "type": ["string", "null"] }
+  },
+  "required": ["timestamp"]
+}
