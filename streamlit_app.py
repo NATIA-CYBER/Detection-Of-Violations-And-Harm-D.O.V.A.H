@@ -39,6 +39,37 @@ else:
     trend["bucket"] = pd.to_datetime(trend["ts"]).dt.floor("min")
     trend = trend.groupby("bucket").size().reset_index(name="count")
     total_24h = len(alerts_preview)
+import textwrap
+
+st.markdown(textwrap.dedent(f"""\
+<div class="hero">
+  <div class="left">
+    <div class="brand-title">{APP_TITLE}</div>
+    <div class="brand-sub">{APP_SUB}</div>
+
+    <div class="badges">
+      <span class="badge ok">SLO: P95 ingest→features &lt; 800ms</span>
+      <span class="badge warn">{'Mock mode' if MODE=='mock' else 'Live mode'}</span>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="card stat">
+      <div class="caption-muted">Alerts (24h)</div>
+      <div class="stat-num">—</div>
+    </div>
+    <div class="card stat">
+      <div class="caption-muted">Drifted features</div>
+      <div class="stat-num">—</div>
+    </div>
+    <div class="card stat">
+      <div class="caption-muted">Explained alerts</div>
+      <div class="stat-num">—</div>
+    </div>
+  </div>
+</div>
+"""), unsafe_allow_html=True)
+
 
 # ---- KPIs ----
 section_header("Overview", "High-level signal & recent activity")
