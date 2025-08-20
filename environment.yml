@@ -2,6 +2,7 @@ name: dovah
 channels:
   - conda-forge
 dependencies:
+  - jsonschema>=4.0
   - python=3.11
   - pip
   - pandas=2.2.*
