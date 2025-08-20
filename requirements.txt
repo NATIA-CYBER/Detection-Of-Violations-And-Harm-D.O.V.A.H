@@ -9,6 +9,7 @@ matplotlib==3.7.2
 streamlit==1.48.1
 
 plotly>=5.22 #in case of charts
+jsonschema>=4.19
 
 # Security & Enrichment
 cryptography==41.0.3
