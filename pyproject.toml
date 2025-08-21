@@ -2,11 +2,31 @@
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[project]
+name = "dovah-internal"
+version = "0.1.0"
+requires-python = ">=3.11"
+description = "DOVAH internal package (installs 'src' as a package so imports like 'from src.*' work)"
+readme = "README.md"
+
+# Optional CLIs; 
+[project.scripts]
+dovah-features = "src.cli.features_main:main"
+dovah-producer = "src.cli.producer_main:main"
+dovah-infer    = "src.cli.infer_main:main"
+dovah-fusion   = "src.cli.fusion_main:main"
+dovah-enrich   = "src.cli.enrich_main:main"
+dovah-evidence = "src.cli.evidence_main:main"
+dovah-bench    = "src.cli.bench_main:main"
+
+[tool.setuptools]
+#  explicitly install a package literally named 'src' for it fails
+packages = ["src"]
+package-dir = { "src" = "src" }
 
 [tool.setuptools.package-data]
 "*" = ["*.json", "*.ini", "*.csv"]
+
 
 [tool.black]
 line-length = 100
