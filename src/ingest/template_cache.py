@@ -1,78 +1,135 @@
-# src/ingest/template_cache.py
-from __future__ import annotations
+"""Template extraction with persistent caching and pattern matching."""
+import json
 import os
+import re
 from pathlib import Path
+from typing import Dict, Optional, Tuple
 
-# Try real Drain3 first; fall back to local miner if unavailable.
+# Prefer real Drain3; fall back to a local compat that mimics its API.
 try:
-    from drain3 import TemplateMiner as DrainTemplateMiner  # type: ignore
-    try:
-        # Older/newer Drain3s place this here
-        from drain3.template_miner_config import TemplateMinerConfig  # type: ignore
-        _HAVE_TM_CONFIG = True
-    except Exception:
-        _HAVE_TM_CONFIG = False
+    from drain3 import TemplateMiner as TemplateMiner  # type: ignore
     _HAVE_DRAIN3 = True
 except Exception:
     _HAVE_DRAIN3 = False
-    from .template_extract import TemplateMiner as LocalTemplateMiner  # our lightweight miner
+    from .template_extract import TemplateMiner as _LocalMiner  # our lightweight miner
+
+    class _CompatResult:
+        def __init__(self, cluster_id: str, template_mined: str) -> None:
+            self.cluster_id = cluster_id
+            self.template_mined = template_mined
+
+    class TemplateMiner:  # compat wrapper exposing add_log_message(...)
+        def __init__(self) -> None:
+            self._local = _LocalMiner()
+        def add_log_message(self, msg: str):
+            tid = self._local.extract(msg)
+            return _CompatResult(cluster_id=tid, template_mined=self._local.get_template(tid))
+
+from ..common.pseudo import hmac_sha256_hex, get_salt
+
 
 class TemplateCache:
-    """
-    Wrapper that prefers drain3.TemplateMiner if installed; otherwise uses a local miner.
-    If Drain3 is available and a config path is provided (or discoverable), it will be loaded.
-    """
+    # Common variable patterns
+    PATTERNS = {
+        'block_id': re.compile(r'\bblk_\d+\b'),
+        'uuid': re.compile(r'\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b'),
+        'ip_port': re.compile(r'/?(\b(?:\d{1,3}\.){3}\d{1,3}\b)(?::(\d+))?'),
+        'hex': re.compile(r'\b[0-9a-fA-F]{6,}\b'),
+        'number': re.compile(r'\b\d+\b'),
+        'block_ref': re.compile(r'\bblock \d+\b')
+    }
 
-    def __init__(self, config_path: str | None = None) -> None:
-        if _HAVE_DRAIN3:
-            cfg = None
-            if _HAVE_TM_CONFIG:
-                cfg_path = self._discover_config(config_path)
-                if cfg_path:
-                    try:
-                        cfg = TemplateMinerConfig()
-                        cfg.load(str(cfg_path))
-                    except Exception:
-                        cfg = None  # fall back to defaults if INI malformed
-            # If cfg is None, Drain3 uses its defaults
-            self.miner = DrainTemplateMiner(config=cfg) if cfg is not None else DrainTemplateMiner()
-        else:
-            # Local lightweight miner ignores Drain3 INI (by design)
-            self.miner = LocalTemplateMiner()
+    def __init__(self, cache_dir: Path):
+        self.cache_dir = cache_dir
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.miner = TemplateMiner()  # real Drain3 if installed; otherwise compat wrapper
+        self._load_cache()
 
-    def extract_id(self, msg: str) -> str:
-        return self.miner.extract(msg)
+    def _get_cache_key(self, message: str) -> str:
+        """Generate stable cache key for message."""
+        return hmac_sha256_hex(message, get_salt())
 
-    def template_str(self, tid: str) -> str:
-        # Drain3 miner does not expose get_template by default; local one does.
-        # For Drain3, we can't easily retrieve a template string from id without monkeypatching;
-        # tests that need the string should use the local miner or verify via normalization.
-        get_tpl = getattr(self.miner, "get_template", None)
-        return get_tpl(tid) if callable(get_tpl) else ""
+    def _load_cache(self):
+        """Load cached templates."""
+        self.cache: Dict[str, Dict] = {}
+        cache_file = self.cache_dir / "template_cache.json"
+        if cache_file.exists():
+            with open(cache_file) as f:
+                self.cache = json.load(f)
 
-    @staticmethod
-    def _discover_config(explicit: str | None) -> Path | None:
+    def _save_cache(self):
+        """Save cached templates."""
+        cache_file = self.cache_dir / "template_cache.json"
+        with open(cache_file, 'w') as f:
+            json.dump(self.cache, f)
+
+    def _normalize_pattern(self, message: str) -> str:
+        """Normalize message by replacing variable parts with wildcards."""
+        if not message:
+            return ''
+
+        template = message
+        # Replace block IDs
+        template = self.PATTERNS['block_id'].sub('blk_*', template)
+        # Replace UUIDs
+        template = self.PATTERNS['uuid'].sub('*', template)
+        # Replace IP addresses with ports
+        template = self.PATTERNS['ip_port'].sub(lambda m: '*' + (':*' if m.group(2) else ''), template)
+        # Replace hex and numbers
+        template = self.PATTERNS['hex'].sub('*', template)
+        template = self.PATTERNS['number'].sub('*', template)
+        # Clean up block references
+        template = self.PATTERNS['block_ref'].sub('block *', template)
+        return template
+
+    def extract_template(self, message: str) -> Tuple[int, str]:
+        """Extract template ID and pattern, using cache if available.
+
+        Args:
+            message: Log message to extract template from
+
+        Returns:
+            Tuple of (template_id, template_pattern)
         """
-        Return a usable INI path if present:
-        1) explicit arg
-        2) $DRAIN3_CONFIG
-        3) repo-local usual suspects
-        """
-        candidates = []
-        if explicit:
-            candidates.append(Path(explicit))
-        env = os.getenv("DRAIN3_CONFIG")
-        if env:
-            candidates.append(Path(env))
-        # common repo locations (adjust if you keep your INI elsewhere)
-        here = Path(__file__).resolve()
-        candidates.extend([
-            here.with_name("drain3.ini"),
-            here.parents[2] / "config" / "drain3.ini",
-            here.parents[2] / "configs" / "drain3.ini",
-            here.parents[2] / "drain3.ini",
-        ])
-        for p in candidates:
-            if p and p.exists() and p.is_file():
-                return p
-        return None
+        cache_key = self._get_cache_key(message)
+
+        # Check cache first
+        if cache_key in self.cache:
+            return (
+                self.cache[cache_key]['id'],
+                self.cache[cache_key]['pattern']
+            )
+
+        # Cache miss - normalize and extract template
+        normalized = self._normalize_pattern(message)
+        result = self.miner.add_log_message(normalized)
+        template = {
+            'id': result.cluster_id,
+            'pattern': result.template_mined
+        }
+
+        # Update cache
+        self.cache[cache_key] = template
+        self._save_cache()
+
+        return template['id'], template['pattern']
+
+    def get_stats(self) -> Dict:
+        """Get template extraction stats."""
+        # With Drain3, .drain.clusters exists; with compat miner, it doesn't.
+        clusters = []
+        drain = getattr(getattr(self.miner, "drain", None), "clusters", None)
+        if drain:
+            clusters = [
+                {
+                    'id': c.cluster_id,
+                    'size': c.size,
+                    'pattern': c.get_template()
+                }
+                for c in drain
+            ]
+        return {
+            'total_templates': len(clusters),
+            'cache_size': len(self.cache),
+            'clusters': clusters
+        }
