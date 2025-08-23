@@ -9,7 +9,7 @@ requires-python = ">=3.11"
 description = "DOVAH internal package (installs 'src' as a package so imports like 'from src.*' work)"
 readme = "README.md"
 
-# Optional CLIs; 
+# CLI entry points (keep only those that actually exist)
 [project.scripts]
 dovah-features = "src.cli.features_main:main"
 dovah-producer = "src.cli.producer_main:main"
@@ -20,13 +20,12 @@ dovah-evidence = "src.cli.evidence_main:main"
 dovah-bench    = "src.cli.bench_main:main"
 
 [tool.setuptools]
-#  explicitly install a package literally named 'src' for it fails
+# KEY: install a top-level package literally named "src"
 packages = ["src"]
 package-dir = { "src" = "src" }
 
 [tool.setuptools.package-data]
 "*" = ["*.json", "*.ini", "*.csv"]
-
 
 [tool.black]
 line-length = 100
