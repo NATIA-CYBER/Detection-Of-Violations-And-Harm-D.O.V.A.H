@@ -1,4 +1,6 @@
+# src/eval/run_harness.py
 from __future__ import annotations
+import json
 import logging
 import os
 from datetime import datetime, timedelta
@@ -7,151 +9,155 @@ from typing import Dict, List
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-from src.eval.metrics import EvalMetrics, EvalConfig
+from src.models.anomaly.iforest import IForestModel
+from src.models.log_lm.score import PerplexityScorer
 from src.fusion.late_fusion import combine_scores
-from src.models.anomaly.iforest import IForestModel, IForestConfig
+from src.eval.metrics import EvalMetrics
 
-# ---------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s"
-)
-log = logging.getLogger("harness")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------
-# DB helpers
-# ---------------------------------------------------------------------
-def get_engine():
-    # Prefer DATABASE_URL, fall back to POSTGRES_URL, then local default
-    url = (
-        os.getenv("DATABASE_URL")
-        or os.getenv("POSTGRES_URL")
-        or "postgresql://dovah:dovah@localhost:5432/dovah"
-    )
-    return create_engine(url)
 
-def fetch_window_features(engine, start_time: datetime, end_time: datetime) -> List[Dict]:
-    """Fetch rows from window_features in a time range."""
-    q = text("""
-        SELECT
-            id, session_id, ts, label,
-            event_count, unique_components, error_ratio,
-            template_entropy, component_entropy
+def fetch_features(engine, start: datetime, end: datetime) -> List[Dict]:
+    sql = text(
+        """
+        SELECT id, session_id, ts, label,
+               event_count, unique_components, error_ratio,
+               template_entropy, component_entropy
         FROM window_features
         WHERE ts BETWEEN :start AND :end
-        ORDER BY ts ASC
-    """)
-    with engine.connect() as conn:
-        rows = conn.execute(q, {"start": start_time, "end": end_time})
+        ORDER BY ts
+        """
+    )
+    with engine.connect() as c:
+        rows = c.execute(sql, {"start": start, "end": end})
         return [dict(r._mapping) for r in rows]
 
-def rows_to_events(rows: List[Dict]) -> List[Dict]:
-    """Shape rows into events that IForestModel expects (flat keys + session_id + ts)."""
-    ev = []
-    for r in rows:
-        ev.append({
-            "session_id":        r["session_id"],
-            "ts":                r["ts"],
-            "event_count":       r["event_count"],
-            "unique_components": r["unique_components"],
-            "error_ratio":       r["error_ratio"],
-            "template_entropy":  r["template_entropy"],
-            "component_entropy": r["component_entropy"],
-        })
-    return ev
 
-# ---------------------------------------------------------------------
-# Training / scoring
-# ---------------------------------------------------------------------
-def train_iforest(train_rows: List[Dict]) -> IForestModel:
-    if not train_rows:
-        raise ValueError("No training rows.")
-    model = IForestModel(IForestConfig())
-    model.fit(rows_to_events(train_rows))
-    log.info("IForest trained on %d windows.", len(train_rows))
-    return model
+def _find_seq_column(engine) -> str | None:
+    probe = text(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema='public'
+          AND table_name='window_features'
+          AND column_name IN ('templates_seq','template_ids','templates')
+        LIMIT 1
+        """
+    )
+    with engine.connect() as c:
+        r = c.execute(probe).fetchone()
+        return r[0] if r else None
 
-def score_and_store_detections(engine, rows: List[Dict], iforest: IForestModel) -> None:
+
+def fetch_sequences(engine, start: datetime, end: datetime) -> Dict[str, List[str]]:
     """
-    Scores rows with IForest and writes detections using combine_scores().
-    We don't have LM/EPSS/KEV wired here yet → pass zeros/empty.
+    Returns {window_id: [template_id, ...]} if a sequence column exists;
+    otherwise returns {} and the LM path will be skipped.
     """
-    if not rows:
-        log.warning("No rows to score.")
-        return
+    col = _find_seq_column(engine)
+    if not col:
+        return {}
 
-    events = rows_to_events(rows)
-    # IForestModel.predict returns {session_id: {"score": float, "ts": ...}}
-    by_session = iforest.predict(events)
+    sql = text(
+        f"""
+        SELECT id AS window_id, {col} AS seq
+        FROM window_features
+        WHERE ts BETWEEN :start AND :end
+        """
+    )
+    out: Dict[str, List[str]] = {}
+    with engine.connect() as c:
+        for row in c.execute(sql, {"start": start, "end": end}):
+            seq = row.seq
+            if seq is None:
+                continue
+            if isinstance(seq, str):
+                try:
+                    seq = json.loads(seq)
+                except Exception:
+                    seq = []
+            out[str(row.window_id)] = [str(t) for t in (seq or [])]
+    return out
 
-    SessionLocal = sessionmaker(bind=engine)
-    session = SessionLocal()
 
-    try:
-        for r in rows:
-            sid = r["session_id"]
-            wid = r["id"]
-            if_data = by_session.get(sid, {})
-            if_score = float(if_data.get("score", 0.0))
-
-            # combine_scores requires lm_score, iforest_score, epss_scores, kev_cves
-            final, _parts = combine_scores(
-                session=session,
-                window_id=str(wid),
-                lm_score=0.0,
-                iforest_score=if_score,
-                epss_scores={},        # not joined yet
-                kev_cves=[],           # not joined yet
-                scaler_params=None,
-                weights=None,
-            )
-            log.debug("stored detection window=%s score=%.4f", wid, final)
-
-        session.commit()
-        log.info("Stored detections for %d windows.", len(rows))
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
-
-# ---------------------------------------------------------------------
-# Main harness: 3-1-1 weekly split (relative to an anchor)
-# ---------------------------------------------------------------------
-def main() -> int:
-    # Anchor (adjust to your dataset’s calendar). Using a fixed point for reproducibility:
+def main() -> None:
+    # 3-1-1 split (anchor is arbitrary; adjust to your data)
     anchor = datetime(2025, 8, 15, 10, 0, 0)
+    train_start, train_end = anchor, anchor + timedelta(weeks=3)
+    val_start, val_end = train_end, train_end + timedelta(weeks=1)
+    test_start, test_end = val_start + timedelta(weeks=1), val_start + timedelta(weeks=2)
 
-    train_start, train_end         = anchor,              anchor + timedelta(weeks=3)
-    valid_start, valid_end         = train_end,           train_end + timedelta(weeks=1)
-    test_start,  test_end          = valid_end,           valid_end + timedelta(weeks=1)
+    db_url = (
+        os.getenv("DATABASE_URL")
+        or os.getenv("POSTGRES_URL")
+        or "postgresql://dovah:dovah@localhost:5433/dovah"
+    )
+    engine = create_engine(db_url)
+    Session = sessionmaker(bind=engine)
 
-    log.info("Train: %s → %s", train_start, train_end)
-    log.info("Valid: %s → %s", valid_start, valid_end)
-    log.info("Test:  %s → %s", test_start,  test_end)
+    # ---- Train IF on features
+    train_rows = fetch_features(engine, train_start, train_end)
+    if not train_rows:
+        raise RuntimeError("No training rows in window_features for the train range.")
+    iforest = IForestModel()
+    iforest.fit(train_rows)
 
-    engine = get_engine()
+    # ---- Fit Log-LM if we have sequences
+    train_seqs = fetch_sequences(engine, train_start, train_end)
+    lm = None
+    if train_seqs:
+        lm = PerplexityScorer(n=3)
+        lm.fit(list(train_seqs.values()))
+        log.info("Perplexity LM trained on %d windows", len(train_seqs))
+    else:
+        log.info("No templates sequence column found; LM path disabled.")
 
-    # Train
-    train_rows = fetch_window_features(engine, train_start, train_end)
-    model = train_iforest(train_rows)
+    def score_and_store(start: datetime, end: datetime) -> None:
+        rows = fetch_features(engine, start, end)
+        if not rows:
+            return
 
-    # Validate
-    valid_rows = fetch_window_features(engine, valid_start, valid_end)
-    score_and_store_detections(engine, valid_rows, model)
-    ev = EvalMetrics(EvalConfig())
-    v_metrics = ev.evaluate(valid_start, valid_end)
-    log.info("Validation metrics: %s", v_metrics)
+        # IF scores keyed by session_id
+        if_scores_by_session = iforest.predict(rows)
 
-    # Test
-    test_rows = fetch_window_features(engine, test_start, test_end)
-    score_and_store_detections(engine, test_rows, model)
-    t_metrics = ev.evaluate(test_start, test_end)
-    log.info("Test metrics: %s", t_metrics)
+        # LM sequences (if available)
+        lm_seqs = fetch_sequences(engine, start, end) if lm else {}
 
-    return 0
+        with Session() as s:
+            # Clear any existing detections for these windows
+            window_ids = [r["id"] for r in rows]
+            s.execute(text("DELETE FROM detections WHERE window_id = ANY(:ids)"), {"ids": window_ids})
+            s.commit()
+
+            for r in rows:
+                wid = str(r["id"])
+                sess = r["session_id"]
+                if_score = float(if_scores_by_session.get(sess, {}).get("score", 0.0))
+
+                # Perplexity as lm_score (raw; combine_scores will min–max normalize)
+                seq = lm_seqs.get(wid, [])
+                lm_score = float(lm.score(seq)) if (lm and seq) else 0.0
+
+                combine_scores(
+                    session=s,
+                    window_id=wid,
+                    lm_score=lm_score,
+                    iforest_score=if_score,
+                    epss_scores={},  # add EPSS later
+                    kev_cves=[],     # add KEV later
+                )
+            # combine_scores commits internally
+
+    # Validation + Test
+    score_and_store(val_start, val_end)
+    score_and_store(test_start, test_end)
+
+    # Metrics/plots to docs/metrics/
+    evaluator = EvalMetrics()
+    print("Validation:", evaluator.evaluate(val_start, val_end))
+    print("Test:", evaluator.evaluate(test_start, test_end))
+
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()
