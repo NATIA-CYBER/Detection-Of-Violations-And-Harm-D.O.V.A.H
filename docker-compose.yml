@@ -11,6 +11,7 @@ services:
       - .:/app
     environment:
       - DATABASE_URL=postgresql+psycopg://dovah:dovah@postgres:5432/dovah
+      - POSTGRES_URL=postgresql+psycopg://dovah:dovah@postgres:5432/dovah
       - DOVAH_TENANT_SALT=dev_only_do_not_use
     depends_on:
       postgres:
@@ -23,7 +24,7 @@ services:
       POSTGRES_PASSWORD: dovah
       POSTGRES_DB: dovah
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
