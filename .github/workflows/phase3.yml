@@ -23,15 +23,18 @@ jobs:
 
       - name: Install project (editable) + deps
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade pip setuptools wheel
+          # install your package (installs 'src' so imports like 'from src.*' work)
           python -m pip install -e .
-          if [ -f requirements.txt ]; then python -m pip install -r requirements.txt || true; fi
+          # install runtime + test deps
+          if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+          pip list
 
       - name: Run unit tests (quiet)
         run: python -m pytest -q
 
-      # Run your Phase 3 pipeline + acceptance gate WITHOUT conda
       - name: Phase 3 pipeline + gate (p95 < 800 ms)
+        # run Makefile targets without conda on CI
         run: make phase3-all PHASE=phase3 PY=python SH="sh -c"
 
       - name: Show p95
@@ -46,4 +49,3 @@ jobs:
           name: phase3-artifacts
           path: reports/phase3/**/*
           if-no-files-found: warn
- 
