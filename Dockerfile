@@ -13,7 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt constraints.txt ./
 
 # Install dependencies with pip
-RUN pip install --no-cache-dir -r requirements.txt -c constraints.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
 
 # Runtime stage
 FROM python:3.11.9-slim
