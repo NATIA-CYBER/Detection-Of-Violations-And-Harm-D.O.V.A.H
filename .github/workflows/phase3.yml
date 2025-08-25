@@ -32,7 +32,7 @@ jobs:
           if [ -f requirements.txt ]; then python -m pip install -r requirements.txt || true; fi
           pip list
 
-      # Keep CI focused: only run the Phase-3 unit test that proves workability
+      # Keep CI focuse
       - name: Run unit tests (quiet)
         run: python -m pytest -q tests/stream/test_features.py
 
