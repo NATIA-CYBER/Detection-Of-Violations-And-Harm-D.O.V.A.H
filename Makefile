@@ -1,7 +1,7 @@
 # ==== Config ====
 ENV ?= dovah
-PY  := conda run -n $(ENV) python
-SH  := conda run -n $(ENV) sh -c
+PY  ?= conda run -n $(ENV) python
+SH  ?= conda run -n $(ENV) sh -c
 
 # Phase selector (defaults to phase3; override with PHASE=phase4, etc.)
 PHASE ?= phase3
@@ -20,6 +20,7 @@ LOGS    := $(REPORTS)/logs
 IMG     := $(REPORTS)/img
 
 .PHONY: help env deps phase-dirs phase-run phase-accept phase-test phase-all \
+        split-data train evaluate \
         streamlit-run clean-phase clean migrate-day3-to-phase3 \
         phase3-run phase3-accept phase3-test phase3-all \
         phase4-run phase4-accept phase4-test phase4-all
@@ -44,7 +45,7 @@ help:
 
 env:
 	conda env update -f environment.yml --prune
-	$(PY) -m pip install -r requirements.txt
+	$(PY) -m pip install -e .
 
 deps: env  ## alias
 
@@ -65,6 +66,20 @@ phase-test:
 	$(PY) -m pytest -q tests/stream/test_features.py
 
 phase-all: phase-run phase-accept phase-test
+
+# ==== Evaluation Harness ====
+SPLIT_DIR := sample_data/hdfs
+
+split-data:
+	$(PY) -m src.eval.split_data --input-file $(DATA) --output-dir $(SPLIT_DIR)
+
+train: split-data
+	@echo "Training model on $(SPLIT_DIR)/train.jsonl..."
+	# Placeholder for training logic
+
+evaluate: train
+	@echo "Evaluating model on $(SPLIT_DIR)/test.jsonl..."
+	$(SH) 'APP_ENV=local POSTGRES_URL=postgresql://dovah:dovah@localhost:5433/dovah python -m src.eval.run_evaluation'
 
 # Aliases for specific phases
 phase3-run: ;  $(MAKE) PHASE=phase3 phase-run
