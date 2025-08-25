@@ -9,11 +9,9 @@ This module implements late fusion logic to combine:
 
 from typing import Dict, List, Optional, Tuple
 import numpy as np
-import pandas as pd
-from sqlalchemy import select, text
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from ..models.baselines import LogLM, WindowIsolationForest
 
 def combine_scores(
     session: Session,
@@ -22,7 +20,8 @@ def combine_scores(
     iforest_score: float,
     epss_scores: Dict[str, float],
     kev_cves: List[str],
-    thresholds: Optional[Dict[str, float]] = None
+    scaler_params: Optional[Dict[str, Dict[str, float]]] = None,
+    weights: Optional[Dict[str, float]] = None,
 ) -> Tuple[float, Dict[str, float]]:
     """Combine multiple detection signals into a final score.
     
@@ -42,31 +41,35 @@ def combine_scores(
         Tuple of (final_score, component_scores)
         where final_score is in [0,1] and component_scores has individual scores
     """
-    if thresholds is None:
-        thresholds = {
-            "lm_threshold": 0.8,
-            "iforest_threshold": 0.7, 
-            "epss_threshold": 0.6
+    # Default scaler parameters (min/max values for each score)
+    if scaler_params is None:
+        scaler_params = {
+            "lm_score": {"min": 0.0, "max": 20.0},
+            "iforest_score": {"min": 0.0, "max": 1.0},
+            "epss_score": {"min": 0.0, "max": 1.0},
         }
+
+    # Default weights
+    if weights is None:
+        weights = {"lm": 0.3, "iforest": 0.3, "epss": 0.2, "kev": 0.2}
         
-    # Normalize component scores to [0,1]
-    norm_lm = min(lm_score / thresholds["lm_threshold"], 1.0)
-    norm_iforest = min(iforest_score / thresholds["iforest_threshold"], 1.0)
+    # Min-Max Normalize component scores to [0,1]
+    def min_max_scale(score, params):
+        s_min, s_max = params['min'], params['max']
+        if s_max == s_min:
+            return 0.0
+        return np.clip((score - s_min) / (s_max - s_min), 0, 1)
+
+    norm_lm = min_max_scale(lm_score, scaler_params["lm_score"])
+    norm_iforest = min_max_scale(iforest_score, scaler_params["iforest_score"])
     
     # Get max EPSS score if any CVEs present
     max_epss = max(epss_scores.values()) if epss_scores else 0.0
-    norm_epss = min(max_epss / thresholds["epss_threshold"], 1.0)
+    norm_epss = min_max_scale(max_epss, scaler_params["epss_score"])
     
     # KEV presence is binary
     kev_score = 1.0 if any(cve in kev_cves for cve in epss_scores.keys()) else 0.0
     
-    # Weighted combination (can be tuned)
-    weights = {
-        "lm": 0.3,
-        "iforest": 0.3,
-        "epss": 0.2,
-        "kev": 0.2
-    }
     
     final_score = (
         weights["lm"] * norm_lm +
