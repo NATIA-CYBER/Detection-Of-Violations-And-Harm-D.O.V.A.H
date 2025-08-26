@@ -1,4 +1,4 @@
-"""Add window_features table
+
 
 Revision ID: 001
 Revises: 
