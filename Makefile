@@ -60,9 +60,8 @@ phase-run: phase-dirs
 	  > $(METRICS)/features.jsonl'
 
 phase-accept: phase-run
-	phase-accept: phase-run
-	phase-accept: phase-run
 	$(PY) tests/calculate_p95.py $(METRICS)/features.jsonl --sla-ms $(SLA_MS) | tee $(REPORTS)/p95.txt
+
 
    
 
