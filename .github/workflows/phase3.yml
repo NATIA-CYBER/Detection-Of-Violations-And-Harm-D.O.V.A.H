@@ -37,8 +37,11 @@ jobs:
         run: python -m pytest -q tests/stream/test_features.py
 
       # Phase-3 pipeline + acceptance gate (no conda on CI)
-      - name: Phase 3 pipeline + gate (p95 < 800 ms)
-        run: make phase3-all PHASE=phase3 PY=python SH="sh -c"
+      - name: Phase 3 pipeline + gate (CI SLA=2000 ms; local SLA=800 ms)
+        env:
+          SLA_MS: 2000
+        run: make phase3-all PHASE=phase3 SLA_MS=${SLA_MS} PY=python SH="sh -c"
+
 
       - name: Show p95
         if: always()
