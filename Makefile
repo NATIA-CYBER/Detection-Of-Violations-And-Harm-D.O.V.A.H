@@ -60,7 +60,9 @@ phase-run: phase-dirs
 	  > $(METRICS)/features.jsonl'
 
 phase-accept: phase-run
-	$(PY) tests/calculate_p95.py $(METRICS)/features.jsonl --sla-ms $(SLA_MS)
+	phase-accept: phase-run
+	$(PY) -m tests.calculate_p95 $(METRICS)/latency.csv --sla-ms $(SLA_MS)
+
 
 phase-test:
 	$(PY) -m pytest -q tests/stream/test_features.py
