@@ -176,6 +176,38 @@ python -m src.models.log_lm.score
 # persists rows in detections with created_at for latency metrics
 python -m src.fusion.late_fusion
 ```
+##Day-4 evaluation files
+##One-time setup/makes script executable
+chmod +x scripts/build_fusion.sh 
+
+##Option A — pass paths inline
+VAL_IN="path/to/val.jsonl" \
+TEST_IN="path/to/test.jsonl" \
+VAL_LABELS="data/val/labels.jsonl" \
+TEST_LABELS="data/test/labels.jsonl" \
+./scripts/build_fusion.sh
+
+##Option B — hard-code once,runs after
+./scripts/build_fusion.sh
+
+##Targeted (CI)
+make build-fusion \
+  VAL_IN=path/to/val.jsonl \
+  TEST_IN=path/to/test.jsonl \
+  VAL_LABELS=data/val/labels.jsonl \
+  TEST_LABELS=data/test/labels.jsonl
+# If you hard-coded paths in the script, plain `make build-fusion` works.
+
+#Sanity check
+ls -lh data/val/fusion.jsonl data/test/fusion.jsonl
+head -n 2 data/val/fusion.jsonl
+head -n 2 data/test/fusion.jsonl
+
+# day-4 done 
+make calibrate MODEL=fusion VAL_PRED=data/val/fusion.jsonl FP1K=5
+make artifacts  MODEL=fusion TEST_PRED=data/test/fusion.jsonl
+make phase4-accept
+
 
 ## 8) Evaluate (prints metrics incl. p95 latency)
 ```bash
