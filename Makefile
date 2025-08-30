@@ -137,3 +137,8 @@ artifacts:
 	$(PY) scripts/generate_metrics_artifacts.py --pred $(TEST_PRED) --model $(MODEL)
 
 artifacts-all: calibrate artifacts
+.PHONY: build-fusion
+build-fusion:
+	VAL_IN="$(VAL_IN)" TEST_IN="$(TEST_IN)" VAL_LABELS="$(VAL_LABELS)" TEST_LABELS="$(TEST_LABELS)" \
+	bash scripts/build_fusion.sh
+
