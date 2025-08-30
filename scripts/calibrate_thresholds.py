@@ -45,7 +45,7 @@ def pick_threshold(scores: np.ndarray, labels: np.ndarray, fp1k_cap: float) -> d
         fp = int(((pred == 1) & (labels == 0)).sum())
         fn = int(((pred == 0) & (labels == 1)).sum())
         prec = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-        rec = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        rec  = tp / (tp + fn) if (tp + fn) > 0 else 0.0
         fp1k = 1000.0 * fp / len(labels)
         cand = {"t": float(t), "precision": prec, "recall": rec, "fp_per_1k": fp1k}
         # Keep the best under cap by (precision desc, recall desc, threshold asc)
