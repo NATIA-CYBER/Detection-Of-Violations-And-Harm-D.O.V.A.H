@@ -14,6 +14,12 @@ WARMUP  ?= 10
 DUR     ?= 120
 SLA_MS  ?= 800
 
+# Artifacts defaults (override at call-site)
+MODEL     ?= fusion
+VAL_PRED  ?= data/val/fusion.jsonl
+TEST_PRED ?= data/test/fusion.jsonl
+FP1K      ?= 5.0
+
 REPORTS := reports/$(PHASE)
 METRICS := $(REPORTS)/metrics
 LOGS    := $(REPORTS)/logs
@@ -23,7 +29,9 @@ IMG     := $(REPORTS)/img
         split-data train evaluate \
         streamlit-run clean-phase clean migrate-day3-to-phase3 \
         phase3-run phase3-accept phase3-test phase3-all \
-        phase4-run phase4-accept phase4-test phase4-all
+        phase4-run phase4-accept phase4-test phase4-all \
+        smoke-imports smoke-iforest smokes \
+        calibrate artifacts artifacts-all
 
 help:
 	@echo "Targets:"
@@ -37,6 +45,9 @@ help:
 	@echo "  migrate-day3-to-phase3 - move reports/day3 -> reports/phase3 (one-time)"
 	@echo "  clean-phase          - remove current PHASE artifacts"
 	@echo "  clean                - general cleanup"
+	@echo "  smokes               - import + tiny IForest sanity (no DB)"
+	@echo "  calibrate            - choose threshold on validation (writes docs/metrics/thresholds.json)"
+	@echo "  artifacts            - PR/ROC PNGs + metrics CSV on test (writes to docs/metrics/)"
 	@echo ""
 	@echo "Shortcuts:"
 	@echo "  phase3-*: aliases with PHASE=phase3"
@@ -61,10 +72,6 @@ phase-run: phase-dirs
 
 phase-accept: phase-run
 	$(PY) tests/calculate_p95.py $(METRICS)/features.jsonl --sla-ms $(SLA_MS) | tee $(REPORTS)/p95.txt
-
-
-   
-
 
 phase-test:
 	$(PY) -m pytest -q tests/stream/test_features.py
@@ -112,3 +119,21 @@ clean-phase:
 
 clean:
 	find . -type d -name "__pycache__" -prune -exec rm -rf {} + 2>/dev/null || true
+
+# ---- Smokes (run inside conda env; file-path form works anywhere) ----
+smoke-imports:
+	$(PY) scripts/smoke_imports.py
+
+smoke-iforest:
+	$(PY) scripts/smoke_iforest.py
+
+smokes: smoke-imports smoke-iforest
+
+# ---- Day-4 artifacts: threshold calibration + plots/csv ----
+calibrate:
+	$(PY) scripts/calibrate_thresholds.py --pred $(VAL_PRED) --model $(MODEL) --fp1k-cap $(FP1K)
+
+artifacts:
+	$(PY) scripts/generate_metrics_artifacts.py --pred $(TEST_PRED) --model $(MODEL)
+
+artifacts-all: calibrate artifacts
