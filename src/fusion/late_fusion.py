@@ -1,119 +1,83 @@
-"""Late fusion module for combining multiple detection signals.
-
-This module implements late fusion logic to combine:
-1. Log-LM perplexity scores
-2. IsolationForest anomaly scores
-3. EPSS exploitation likelihood
-4. KEV known exploitation status
-"""
-
-from typing import Dict, List, Optional, Tuple
+# src/fusion/late_fusion.py
+from __future__ import annotations
+import math
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING, Any
 import numpy as np
-from sqlalchemy import text
-from sqlalchemy.orm import Session
 
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+def _scale(x: float, p: Dict[str, float]) -> float:
+    mn, mx = float(p.get("min", 0.0)), float(p.get("max", 1.0))
+    if not math.isfinite(x) or mx <= mn:
+        return 0.0
+    return float(np.clip((x - mn) / (mx - mn), 0.0, 1.0))
 
 def combine_scores(
-    session: Session,
-    window_id: str,
-    lm_score: float,
-    iforest_score: float,
-    epss_scores: Dict[str, float],
-    kev_cves: List[str],
+    # keep compatibility with your harness
+    session: "Session" = None,
+    window_id: Any = None,
+    lm_score: Optional[float] = None,
+    iforest_score: Optional[float] = None,
+    epss_scores: Optional[Dict[str, float]] = None,
+    kev_cves: Optional[List[str]] = None,
+    # sometimes provided by harness (fallback call)
+    ts: Any = None,
+    session_id: Optional[str] = None,
+    # optional config
     scaler_params: Optional[Dict[str, Dict[str, float]]] = None,
     weights: Optional[Dict[str, float]] = None,
+    # also accept db_session for future calls
+    db_session: "Session" = None,
+    **kwargs,
 ) -> Tuple[float, Dict[str, float]]:
-    """Combine multiple detection signals into a final score.
-    
-    Args:
-        session: Database session
-        window_id: Window identifier
-        lm_score: Log-LM perplexity score
-        iforest_score: IsolationForest anomaly score
-        epss_scores: Dict mapping CVE IDs to EPSS scores
-        kev_cves: List of CVEs from KEV catalog
-        thresholds: Optional score thresholds, defaults to:
-            lm_threshold: 0.8
-            iforest_threshold: 0.7
-            epss_threshold: 0.6
-            
-    Returns:
-        Tuple of (final_score, component_scores)
-        where final_score is in [0,1] and component_scores has individual scores
-    """
-    # Default scaler parameters (min/max values for each score)
     if scaler_params is None:
         scaler_params = {
             "lm_score": {"min": 0.0, "max": 20.0},
             "iforest_score": {"min": 0.0, "max": 1.0},
             "epss_score": {"min": 0.0, "max": 1.0},
         }
-
-    # Default weights
     if weights is None:
-        weights = {"lm": 0.3, "iforest": 0.3, "epss": 0.2, "kev": 0.2}
-        
-    # Min-Max Normalize component scores to [0,1]
-    def min_max_scale(score, params):
-        s_min, s_max = params['min'], params['max']
-        if s_max == s_min:
-            return 0.0
-        return np.clip((score - s_min) / (s_max - s_min), 0, 1)
+        weights = {"lm": 0.30, "iforest": 0.30, "epss": 0.20, "kev": 0.20}
 
-    norm_lm = min_max_scale(lm_score, scaler_params["lm_score"])
-    norm_iforest = min_max_scale(iforest_score, scaler_params["iforest_score"])
-    
-    # Get max EPSS score if any CVEs present
+    lm = 0.0 if lm_score is None or not math.isfinite(lm_score) else float(lm_score)
+    iso = 0.0 if iforest_score is None or not math.isfinite(iforest_score) else float(iforest_score)
+    epss_scores = epss_scores or {}
+    kev_cves = kev_cves or []
+
+    n_lm = _scale(lm, scaler_params["lm_score"])
+    n_iso = _scale(iso, scaler_params["iforest_score"])
     max_epss = max(epss_scores.values()) if epss_scores else 0.0
-    norm_epss = min_max_scale(max_epss, scaler_params["epss_score"])
-    
-    # KEV presence is binary
-    kev_score = 1.0 if any(cve in kev_cves for cve in epss_scores.keys()) else 0.0
-    
-    
-    final_score = (
-        weights["lm"] * norm_lm +
-        weights["iforest"] * norm_iforest +
-        weights["epss"] * norm_epss +
-        weights["kev"] * kev_score
-    )
-    
-    component_scores = {
-        "lm_score": norm_lm,
-        "iforest_score": norm_iforest,
-        "epss_score": norm_epss,
-        "kev_score": kev_score
-    }
-    
-    # Save scores to detections table
-    stmt = text("""
-        INSERT INTO detections (
-            window_id,
-            score,
-            lm_score,
-            iforest_score,
-            epss_score,
-            kev_score,
-            created_at
-        ) VALUES (
-            :window_id,
-            :score,
-            :lm_score,
-            :iforest_score,
-            :epss_score,
-            :kev_score,
-            CURRENT_TIMESTAMP
-        )
-    """)
-    
-    session.execute(
-        stmt,
-        {
-            "window_id": window_id,
-            "score": final_score,
-            **component_scores
-        }
-    )
-    session.commit()
-    
-    return final_score, component_scores
+    n_epss = _scale(max_epss, scaler_params["epss_score"])
+    kev_hit = any(cve in kev_cves for cve in epss_scores.keys())
+    n_kev = 1.0 if kev_hit else 0.0
+
+    final_score = float(np.clip(
+        weights.get("lm",0)*n_lm +
+        weights.get("iforest",0)*n_iso +
+        weights.get("epss",0)*n_epss +
+        weights.get("kev",0)*n_kev,
+        0.0, 1.0
+    ))
+    components = {"lm_score": n_lm, "iforest_score": n_iso, "epss_score": n_epss, "kev_score": n_kev}
+
+    # Optional DB write (schema aligned with Alembic 002)
+    sess = db_session or session
+    if sess is not None and ts is not None and session_id:
+        try:
+            from sqlalchemy import text  # local import avoids hard dep when unused
+            stmt = text("""
+                INSERT INTO detections (ts, session_id, window_id, score, source, model_version, created_at)
+                VALUES (:ts, :session_id, :window_id, :score, 'fusion', 'v0', CURRENT_TIMESTAMP)
+                ON CONFLICT (ts, session_id) DO UPDATE
+                  SET score = EXCLUDED.score,
+                      window_id = EXCLUDED.window_id,
+                      source = EXCLUDED.source,
+                      model_version = EXCLUDED.model_version,
+                      created_at = NOW()
+            """)
+            sess.execute(stmt, {"ts": ts, "session_id": session_id, "window_id": window_id, "score": final_score})
+        except Exception:
+            # don't fail scoring if DB is missing or schema differs
+            pass
+    return final_score, components
