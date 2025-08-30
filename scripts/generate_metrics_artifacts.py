@@ -74,13 +74,13 @@ def main() -> int:
 
     # Threshold
     thr = 0.5
-    tp = fp = fn = tn = 0
     tpath = Path(args.thresholds)
     if tpath.exists():
         try:
             thr = float(json.loads(tpath.read_text()).get(args.model, thr))
         except Exception:
             pass
+
     pred = (scores >= thr).astype(int)
     tp = int(((pred==1)&(labels==1)).sum())
     fp = int(((pred==1)&(labels==0)).sum())
