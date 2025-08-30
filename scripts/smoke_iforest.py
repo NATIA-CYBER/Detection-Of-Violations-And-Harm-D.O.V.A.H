@@ -8,7 +8,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.models.anomaly.iforest import IForestModel, IForestConfig  # noqa
-
 import random, time
 
 r = random.Random(0)
