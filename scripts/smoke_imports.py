@@ -2,7 +2,7 @@
 import importlib, traceback, sys
 from pathlib import Path
 
-# Ensure repo root is on sys.path so "src.*" imports work even when run by file path
+# Make file-path runs work (add repo root so "src.*" is importable)
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
