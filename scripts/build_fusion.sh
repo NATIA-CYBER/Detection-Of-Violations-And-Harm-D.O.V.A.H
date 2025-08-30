@@ -1,44 +1,42 @@
 #!/usr/bin/env bash
-# Builds the two files Day-4 evaluation expects:
-#   data/val/fusion.jsonl
-#   data/test/fusion.jsonl
-# Steps: run harness → outputs/*_pred.jsonl, then join preds + labels → data/*/fusion.jsonl
-
-# ===== EDIT THESE 4 LINES (or override via env when running) =====
-VAL_IN="${VAL_IN:-sample_data/hdfs/val.jsonl}"      # validation events JSONL
-TEST_IN="${TEST_IN:-sample_data/hdfs/test.jsonl}"   # test events JSONL
-VAL_LABELS="${VAL_LABELS:-data/val/labels.jsonl}"   # validation labels JSONL
-TEST_LABELS="${TEST_LABELS:-data/test/labels.jsonl}"# test labels JSONL
-# ================================================================
-
 set -euo pipefail
-CONFIG_PATH="${CONFIG_PATH:-configs/eval/hdfs_phase4.json}"
 
-mkdir -p outputs artifacts data/val data/test
+# Inputs (override via env or Make)
+: "${VAL_IN:=sample_data/hdfs/val/events.jsonl}"
+: "${TEST_IN:=sample_data/hdfs/test/events.jsonl}"
+: "${VAL_LABELS:=data/val/labels.jsonl}"
+: "${TEST_LABELS:=data/test/labels.jsonl}"
+: "${CONFIG_PATH:=configs/eval/hdfs_phase4.json}"
 
-# Optional: trained IForest
+mkdir -p outputs data/val data/test
+
+echo "VAL_IN=${VAL_IN}"
+echo "TEST_IN=${TEST_IN}"
+echo "VAL_LABELS=${VAL_LABELS}"
+echo "TEST_LABELS=${TEST_LABELS}"
+echo "CONFIG_PATH=${CONFIG_PATH}"
+
+[ -f "$VAL_IN" ]     || { echo "❌ Missing VAL events: $VAL_IN"; exit 2; }
+[ -f "$TEST_IN" ]    || { echo "❌ Missing TEST events: $TEST_IN"; exit 2; }
+[ -f "$VAL_LABELS" ] || { echo "❌ Missing VAL labels: $VAL_LABELS"; exit 2; }
+[ -f "$TEST_LABELS" ]|| { echo "❌ Missing TEST labels: $TEST_LABELS"; exit 2; }
+[ -f "$CONFIG_PATH" ]|| { echo "❌ Missing config: $CONFIG_PATH"; exit 2; }
+
 IFOREST_FLAG=""
 [ -f artifacts/iforest.pkl ] && IFOREST_FLAG="--iforest-model-path artifacts/iforest.pkl"
 
-# Sanity checks
-[ -f "$VAL_IN" ]      || { echo "❌ Missing VAL input: $VAL_IN"; exit 2; }
-[ -f "$TEST_IN" ]     || { echo "❌ Missing TEST input: $TEST_IN"; exit 2; }
-[ -f "$VAL_LABELS" ]  || { echo "❌ Missing VAL labels: $VAL_LABELS"; exit 2; }
-[ -f "$TEST_LABELS" ] || { echo "❌ Missing TEST labels: $TEST_LABELS"; exit 2; }
-[ -f "$CONFIG_PATH" ] || { echo "❌ Missing config: $CONFIG_PATH"; exit 2; }
-
-echo "▶ VAL → outputs/val_pred.jsonl"
+echo "▶ VAL predictions → outputs/val_pred.jsonl"
 python -m src.eval.run_harness \
   --config "$CONFIG_PATH" \
-  --input "$VAL_IN" \
+  --input  "$VAL_IN" \
   $IFOREST_FLAG \
   --use-perplexity false \
   --out outputs/val_pred.jsonl
 
-echo "▶ TEST → outputs/test_pred.jsonl"
+echo "▶ TEST predictions → outputs/test_pred.jsonl"
 python -m src.eval.run_harness \
   --config "$CONFIG_PATH" \
-  --input "$TEST_IN" \
+  --input  "$TEST_IN" \
   $IFOREST_FLAG \
   --use-perplexity false \
   --out outputs/test_pred.jsonl
@@ -90,5 +88,4 @@ for pred_path, lab_path, out_path in pairs:
 sys.exit(0 if total>0 else 4)
 PY
 
-echo "✅ Done. Created:"
-ls -lh data/val/fusion.jsonl data/test/fusion.jsonl
+echo "Done."
