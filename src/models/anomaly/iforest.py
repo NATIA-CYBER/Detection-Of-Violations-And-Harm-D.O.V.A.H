@@ -1,7 +1,9 @@
-"""Isolation Forest anomaly detection.
-
-Detects anomalies in HDFS logs using windowed features.
 """
+Isolation Forest anomaly detection for windowed HDFS features.
+"""
+
+from __future__ import annotations
+
 import logging
 import os
 from typing import Dict, List, Optional, Tuple
@@ -12,9 +14,8 @@ from pydantic import BaseModel, Field
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 class IForestConfig(BaseModel):
     """Isolation Forest configuration."""
@@ -24,142 +25,126 @@ class IForestConfig(BaseModel):
             "unique_components",
             "error_ratio",
             "template_entropy",
-            "component_entropy"
+            "component_entropy",
         ],
-        description="Features to use for anomaly detection"
+        description="Features to use for anomaly detection",
     )
-    n_estimators: int = Field(
-        default=100,
-        description="Number of isolation trees"
-    )
-    contamination: float = Field(
-        default=0.1,
-        description="Expected proportion of anomalies"
-    )
+    n_estimators: int = Field(default=100, description="Number of isolation trees")
+    contamination: float = Field(default=0.10, description="Expected proportion of anomalies")
+
 
 class IForestModel:
-    """Isolation Forest anomaly detector."""
-    
+    """Isolation Forest anomaly detector with StandardScaler."""
+
     def __init__(self, config: Optional[IForestConfig] = None):
         self.config = config or IForestConfig()
-        # Use DOVAH_ANALYSIS_SEED from env or default to 42
         seed = int(os.getenv("DOVAH_ANALYSIS_SEED", "42"))
         self.model = IsolationForest(
             n_estimators=self.config.n_estimators,
             contamination=self.config.contamination,
-            random_state=seed
+            random_state=seed,
         )
-        # StandardScaler doesn't have random_state, but numpy seed affects its internals
         np.random.seed(seed)
         self.scaler = StandardScaler()
+        self._fitted = False
 
     def _extract_features(self, events: List[Dict]) -> Tuple[pd.DataFrame, List[Dict]]:
-        """Extract features from events with NaN handling."""
-        features = []
-        valid_events = []
-        
-        for event in events:
-            feature_dict = {}
-            valid = True
-            
-            # Extract features with NaN check
-            for col in self.config.feature_columns:
-                if col not in event:
-                    valid = False
+        """Extract features from events with NaN/inf handling."""
+        feats: List[Dict[str, float]] = []
+        keep: List[Dict] = []
+        cols = self.config.feature_columns
+
+        for ev in events:
+            ok = True
+            f: Dict[str, float] = {}
+            for c in cols:
+                if c not in ev:
+                    ok = False
                     break
-                val = event[col]
-                if pd.isna(val) or np.isinf(val):
-                    valid = False
+                val = ev[c]
+                # Reject NaN/inf/non-numeric
+                try:
+                    val_f = float(val)
+                except Exception:
+                    ok = False
                     break
-                feature_dict[col] = val
-            
-            if valid:
-                features.append(feature_dict)
-                valid_events.append(event)
+                if not np.isfinite(val_f):
+                    ok = False
+                    break
+                f[c] = val_f
+            if ok:
+                feats.append(f)
+                keep.append(ev)
             else:
-                logger.warning(f"Skipping event with invalid features: {event}")
-        
-        if not features:
-            return pd.DataFrame(), []
-        
-        return pd.DataFrame(features), valid_events
-    
+                logger.debug("Skipping invalid event: %s", ev)
+
+        if not feats:
+            return pd.DataFrame(columns=cols), []
+        return pd.DataFrame(feats), keep
+
     def fit(self, events: List[Dict]) -> None:
-        """Fit model on training data."""
-        # Extract features
-        features_df, _ = self._extract_features(events)
-        if len(features_df) == 0:
+        """Fit scaler and model."""
+        X_df, _ = self._extract_features(events)
+        if X_df.empty:
             raise ValueError("No valid features to train on")
-        
-        # Scale features
-        X = self.scaler.fit_transform(features_df)
-        
-        # Fit model
+        X = self.scaler.fit_transform(X_df.values)
         self.model.fit(X)
-        logger.info(f"Trained IsolationForest on {len(X)} samples")
-    
+        self._fitted = True
+        logger.info("IsolationForest trained on %d samples (%d features)", X.shape[0], X.shape[1])
+
     def predict(self, events: List[Dict]) -> Dict[str, Dict[str, float]]:
-        """Predict anomaly scores for events, returning per-window results.
-        
-        Returns:
-            Dict mapping session_id to Dict containing:
-            - score: anomaly score (0-1)
-            - ts: window timestamp
         """
-        # Extract features with NaN handling
-        features_df, valid_events = self._extract_features(events)
-        if len(features_df) == 0:
+        Predict anomaly scores for events, aggregated per session_id (latest ts kept).
+
+        Returns:
+            { session_id: { "score": float(0..1), "ts": timestamp_like } }
+        """
+        if not self._fitted:
+            raise RuntimeError("IForestModel.predict called before fit/load")
+
+        X_df, valid = self._extract_features(events)
+        if X_df.empty:
             logger.warning("No valid features to score")
             return {}
-        
-        # Scale features
-        X = self.scaler.transform(features_df)
-        
-        # Get raw decision scores
-        raw_scores = self.model.score_samples(X)
-        
-        # Convert to probability-like scores (0-1)
-        if len(raw_scores) > 1:
-            rmin, rmax = float(np.min(raw_scores)), float(np.max(raw_scores))
+
+        X = self.scaler.transform(X_df.values)
+        raw = self.model.score_samples(X)  # higher => more normal (by IF convention)
+
+        # Map to anomaly-like score in [0,1]; higher => more anomalous
+        if len(raw) > 1:
+            rmin, rmax = float(np.min(raw)), float(np.max(raw))
             if rmax == rmin:
-                scores = np.full_like(raw_scores, 0.5, dtype=float)
+                s = np.full_like(raw, 0.5, dtype=float)
             else:
-                scores = 1 - (raw_scores - rmin) / (rmax - rmin)
+                s = 1.0 - (raw - rmin) / (rmax - rmin)
         else:
-            # Single score case - use absolute value scaling
-            scores = 1 / (1 + np.exp(-np.abs(raw_scores)))
-        
-        # Map scores to events with ts
-        result = {}
-        for event, score in zip(valid_events, scores):
-            session_id = event.get("session_id")
-            ts = event.get("ts")
-            if session_id is None or ts is None:
-                logger.warning(f"Skipping event missing session_id/ts: {event}")
+            s = 1.0 / (1.0 + np.exp(-abs(raw)))  # single-row fallback
+
+        out: Dict[str, Dict[str, float]] = {}
+        for ev, sc in zip(valid, s):
+            sid = ev.get("session_id")
+            ts = ev.get("ts")
+            if sid is None or ts is None:
+                logger.debug("Skipping event without session_id/ts: %s", ev)
                 continue
-            if session_id not in result or ts > result[session_id]["ts"]:
-                result[session_id] = {
-                    "score": float(score),
-                    "ts": ts
-                }
-        
-        return result
-    
+            # keep latest ts per session_id
+            if sid not in out or (ts is not None and ts > out[sid]["ts"]):
+                out[sid] = {"score": float(np.clip(sc, 0.0, 1.0)), "ts": ts}
+        return out
+
     def save(self, path: str) -> None:
-        """Save model to disk."""
         import joblib
-        joblib.dump({
-            "model": self.model,
-            "scaler": self.scaler,
-            "config": self.config
-        }, path)
-    
+        joblib.dump(
+            {"model": self.model, "scaler": self.scaler, "config": self.config, "_fitted": True},
+            path,
+        )
+
     @classmethod
     def load(cls, path: str) -> "IForestModel":
-        """Load model from disk."""
         import joblib
         data = joblib.load(path)
-        model = cls(config=data["config"])
-        model.model = data["model"]
-        model.scaler = data["scaler"]
-        return model
+        m = cls(config=data["config"])
+        m.model = data["model"]
+        m.scaler = data["scaler"]
+        m._fitted = bool(data.get("_fitted", True))
+        return m
