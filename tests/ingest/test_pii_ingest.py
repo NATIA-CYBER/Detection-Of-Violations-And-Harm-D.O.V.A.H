@@ -126,3 +126,4 @@ def test_scrub_pii_multiple(loader):
     assert "<email:" in scrubbed
     assert "<token:" in scrubbed
     assert "<password:" in scrubbed
+    
