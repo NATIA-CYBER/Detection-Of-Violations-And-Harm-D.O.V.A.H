@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: dovah
       POSTGRES_PASSWORD: dovah
     ports:
-      - "5432:5432"   # matches my .example
+      - "5432:5432"   # matches .env.example
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U dovah -d dovah"]
       interval: 3s
