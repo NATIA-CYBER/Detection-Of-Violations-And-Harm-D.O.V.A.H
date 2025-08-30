@@ -203,6 +203,19 @@ ls -lh data/val/fusion.jsonl data/test/fusion.jsonl
 head -n 2 data/val/fusion.jsonl
 head -n 2 data/test/fusion.jsonl
 
+### Day-4 data prep (events + labels)
+If the required files don’t exist yet, build them from the sample bundle:
+
+```bash
+python -m scripts.prep_day4 \
+  --events sample_data/hdfs/sample.jsonl \
+  --epss   sample_data/security/epss_scores.csv \
+  --kev    sample_data/security/kev_entries.json \
+  --out-root sample_data/hdfs \
+  --val-ratio 0.5 \
+  --epss-threshold 0.6 \
+  --min-events 500   # demo-only; omit if you have real volume
+
 # day-4 done 
 make calibrate MODEL=fusion VAL_PRED=data/val/fusion.jsonl FP1K=5
 make artifacts  MODEL=fusion TEST_PRED=data/test/fusion.jsonl
