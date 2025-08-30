@@ -1,5 +1,14 @@
 # scripts/smoke_iforest.py
-from src.models.anomaly.iforest import IForestModel, IForestConfig
+import sys
+from pathlib import Path
+
+# Ensure repo root is on sys.path so "src.*" imports work even when run by file path
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.models.anomaly.iforest import IForestModel, IForestConfig  # noqa
+
 import random, time
 
 r = random.Random(0)
