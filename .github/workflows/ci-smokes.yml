@@ -1,0 +1,29 @@
+name: Smokes
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  smokes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install -U pip
+          pip install -e .
+      - name: Import smoke
+        run: |
+          source .venv/bin/activate
+          python -m scripts.smoke_imports
+      - name: IForest smoke
+        run: |
+          source .venv/bin/activate
+          python -m scripts.smoke_iforest
