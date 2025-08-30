@@ -1,5 +1,13 @@
 # DOVAH — Detection of Violations & Harm
 
+## Quickstart
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -U pip && pip install -e .
+make smoke-imports      # import sanity
+make smoke-iforest      # tiny no-DB scoring
+
 Real-time, drift-aware security analytics:
 - Ingest logs → compute windowed features
 - Score with unsupervised baselines
