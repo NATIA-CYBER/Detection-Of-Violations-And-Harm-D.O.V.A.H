@@ -1,4 +1,6 @@
-# ==== Config ====
+:# ==== Config ====
+-include .env
+export
 ENV ?= dovah
 PY  ?= conda run -n $(ENV) python
 SH  ?= conda run -n $(ENV) sh -c
@@ -6,6 +8,7 @@ SH  ?= conda run -n $(ENV) sh -c
 # Phase selector (defaults to phase3; override with PHASE=phase4, etc.)
 PHASE ?= phase3
 
+# Streaming demo defaults
 DATA    ?= sample_data/hdfs/sample.jsonl
 WINDOW  ?= 10
 STRIDE  ?= 1
@@ -14,11 +17,17 @@ WARMUP  ?= 10
 DUR     ?= 120
 SLA_MS  ?= 800
 
-# Artifacts defaults (override at call-site)
+# Day-4 artifacts defaults (override at call-site)
 MODEL     ?= fusion
 VAL_PRED  ?= data/val/fusion.jsonl
 TEST_PRED ?= data/test/fusion.jsonl
 FP1K      ?= 5.0
+
+# Fusion builder defaults (override at call-site)
+VAL_IN     ?= sample_data/hdfs/val/events.jsonl
+TEST_IN    ?= sample_data/hdfs/test/events.jsonl
+VAL_LABELS ?= data/val/labels.jsonl
+TEST_LABELS?= data/test/labels.jsonl
 
 REPORTS := reports/$(PHASE)
 METRICS := $(REPORTS)/metrics
@@ -31,7 +40,8 @@ IMG     := $(REPORTS)/img
         phase3-run phase3-accept phase3-test phase3-all \
         phase4-run phase4-accept phase4-test phase4-all \
         smoke-imports smoke-iforest smokes \
-        calibrate artifacts artifacts-all
+        calibrate artifacts artifacts-all \
+        ingest data-day4 build-fusion day4 fix-perms
 
 help:
 	@echo "Targets:"
@@ -43,16 +53,13 @@ help:
 	@echo "  phase-all            - run dirs + pipeline + acceptance + unit tests"
 	@echo "  streamlit-run        - run the Streamlit UI locally"
 	@echo "  migrate-day3-to-phase3 - move reports/day3 -> reports/phase3 (one-time)"
-	@echo "  clean-phase          - remove current PHASE artifacts"
-	@echo "  clean                - general cleanup"
 	@echo "  smokes               - import + tiny IForest sanity (no DB)"
+	@echo "  data-day4            - build val/test events+labels (scripts/prep_day4.py)"
+	@echo "  build-fusion         - run harness + join preds+labels -> fusion.jsonl"
 	@echo "  calibrate            - choose threshold on validation (writes docs/metrics/thresholds.json)"
 	@echo "  artifacts            - PR/ROC PNGs + metrics CSV on test (writes to docs/metrics/)"
+	@echo "  day4                 - data-day4 + build-fusion + calibrate + artifacts"
 	@echo ""
-	@echo "Shortcuts:"
-	@echo "  phase3-*: aliases with PHASE=phase3"
-	@echo "  phase4-*: aliases with PHASE=phase4"
-	@echo "  Use: make phase-all PHASE=phase4"
 
 env:
 	conda env update -f environment.yml --prune
@@ -78,7 +85,7 @@ phase-test:
 
 phase-all: phase-run phase-accept phase-test
 
-# ==== Evaluation Harness ====
+# ==== Evaluation Harness (kept) ====
 SPLIT_DIR := sample_data/hdfs
 
 split-data:
@@ -90,7 +97,7 @@ train: split-data
 
 evaluate: train
 	@echo "Evaluating model on $(SPLIT_DIR)/test.jsonl..."
-	$(SH) 'APP_ENV=local POSTGRES_URL=postgresql://dovah:dovah@localhost:5433/dovah python -m src.eval.run_evaluation'
+	$(SH) 'APP_ENV=local POSTGRES_URL=$${DATABASE_URL} python -m src.eval.run_evaluation'
 
 # Aliases for specific phases
 phase3-run: ;  $(MAKE) PHASE=phase3 phase-run
@@ -129,6 +136,19 @@ smoke-iforest:
 
 smokes: smoke-imports smoke-iforest
 
+# ---- Day-4 data prep (events + labels from your events file) ----
+data-day4:
+	$(PY) -m scripts.prep_day4 --events $(DATA) --val-ratio 0.5
+
+# ---- Day-4 fusion builder (runs harness + joins with labels) ----
+fix-perms:
+	chmod +x scripts/build_fusion.sh || true
+
+.PHONY: build-fusion
+build-fusion: fix-perms
+	VAL_IN="$(VAL_IN)" TEST_IN="$(TEST_IN)" VAL_LABELS="$(VAL_LABELS)" TEST_LABELS="$(TEST_LABELS)" \
+	bash scripts/build_fusion.sh
+
 # ---- Day-4 artifacts: threshold calibration + plots/csv ----
 calibrate:
 	$(PY) scripts/calibrate_thresholds.py --pred $(VAL_PRED) --model $(MODEL) --fp1k-cap $(FP1K)
@@ -137,20 +157,8 @@ artifacts:
 	$(PY) scripts/generate_metrics_artifacts.py --pred $(TEST_PRED) --model $(MODEL)
 
 artifacts-all: calibrate artifacts
-# ---- Day-4 Data Pipeline ----
-ingest:
-	$(PY) -m src.ingest.epss_fetch --db
-	$(PY) -m src.ingest.kev_fetch --db
 
-data-day4:
-	$(PY) scripts/prepare_day4_data.py
-
-phase-4-fusion-build:
-	$(MAKE) build-fusion VAL_IN=data/val/iforest.jsonl TEST_IN=data/test/iforest.jsonl \
-	VAL_LABELS=data/val/labels.jsonl TEST_LABELS=data/test/labels.jsonl
-
-.PHONY: build-fusion
-build-fusion:
-	VAL_IN="$(VAL_IN)" TEST_IN="$(TEST_IN)" VAL_LABELS="$(VAL_LABELS)" TEST_LABELS="$(TEST_LABELS)" \
-	bash scripts/build_fusion.sh
+# ---- One-button Day-4 pipeline ----
+day4: data-day4 build-fusion artifacts-all
+:
 
