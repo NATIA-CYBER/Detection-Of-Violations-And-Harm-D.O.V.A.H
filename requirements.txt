@@ -36,3 +36,8 @@ black>=23.7,<25
 isort>=5.12,<6
 flake8>=6.1,<7
 pre-commit>=3.3,<4
+
+# at the end of requirements.txt
+pytest==7.4.0
+pytest-cov==4.1.0
+
