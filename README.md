@@ -72,6 +72,22 @@ For development or running specific components, see the sections below.
 
 ---
 
+## Dependencies & Driver Notes
+
+ pin the numeric stack to avoid NumPy 2/Pandas 3 surprises:
+
+- **NumPy** `>=1.26,<2`
+- **Pandas** `>=2,<3`
+- **scikit-learn** `>=1.4,<2`
+- **SciPy** `>=1.11,<2`
+
+Postgres driver: choose **one** and match the URL:
+- **Recommended:** `psycopg[binary] (v3)` with URL `postgresql+psycopg://…`
+- **Alternative:** `psycopg2-binary<3` with URL `postgresql+psycopg2://…`
+
+If the driver is misinstalled, SQLAlchemy may throw:
+
+
 ## 1) Requirements
 - Conda (Anaconda/Miniconda/Mamba), Python **3.11.9**
 - PostgreSQL **16.1**
