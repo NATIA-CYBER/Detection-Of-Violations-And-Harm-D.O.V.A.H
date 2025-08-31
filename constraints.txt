@@ -1,4 +1,4 @@
-# Core dependencies
+# Core
 drain3==0.9.10
 sqlalchemy==2.0.20
 pandas==2.1.0
@@ -21,13 +21,13 @@ iniconfig==2.0.0
 pluggy==1.2.0
 packaging==23.1
 
-# Database
+# Database  (PSYCOPG v3 — remove psycopg2)
 alembic==1.11.3
-psycopg2-binary==2.9.7
+psycopg[binary]==3.1.18
 greenlet==2.0.2
 typing-extensions==4.7.1
 
-# Development
+# Dev
 black==23.7.0
 isort==5.12.0
 flake8==6.1.0
@@ -38,4 +38,4 @@ pathspec==0.11.2
 platformdirs==3.10.0
 pycodestyle==2.11.0
 pyflakes==3.1.0
-pyyaml==6.0.1 
+pyyaml==6.0.1
