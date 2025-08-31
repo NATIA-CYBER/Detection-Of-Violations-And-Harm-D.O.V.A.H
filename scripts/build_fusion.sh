@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # scripts/build_fusion.sh
-# Build Day-4 fusion files by:
-#  1) running the harness to create predictions (val/test),
-#  2) joining preds with labels -> data/{val,test}/fusion.jsonl
+# Day-4 builder:
+#   1) run harness on val/test → outputs/{val,test}_pred.jsonl
+#   2) join preds + labels → data/{val,test}/fusion.jsonl
 
 set -euo pipefail
 
@@ -28,7 +28,7 @@ IFOREST_FLAG=""
 [ -f "$CONFIG_PATH" ] || { echo "❌ Missing config: $CONFIG_PATH"; exit 2; }
 
 echo "▶ VAL → outputs/val_pred.jsonl"
-python -m src.eval.run_harness \
+conda run -n dovah python -m src.eval.run_harness \
   --config "$CONFIG_PATH" \
   --input "$VAL_IN" \
   $IFOREST_FLAG \
@@ -36,7 +36,7 @@ python -m src.eval.run_harness \
   --out outputs/val_pred.jsonl
 
 echo "▶ TEST → outputs/test_pred.jsonl"
-python -m src.eval.run_harness \
+conda run -n dovah python -m src.eval.run_harness \
   --config "$CONFIG_PATH" \
   --input "$TEST_IN" \
   $IFOREST_FLAG \
@@ -44,7 +44,7 @@ python -m src.eval.run_harness \
   --out outputs/test_pred.jsonl
 
 echo "▶ Join preds + labels → data/val|test/fusion.jsonl"
-VAL_LABELS="$VAL_LABELS" TEST_LABELS="$TEST_LABELS" python - <<'PY'
+VAL_LABELS="$VAL_LABELS" TEST_LABELS="$TEST_LABELS" conda run -n dovah python - <<'PY'
 from pathlib import Path; import json, os, sys
 pairs = [
     ("outputs/val_pred.jsonl",  os.environ["VAL_LABELS"],  "data/val/fusion.jsonl"),
@@ -92,5 +92,5 @@ PY
 
 echo "——— Summary ———"
 ls -lh data/val/fusion.jsonl data/test/fusion.jsonl
-echo "First lines (val):"; head -n 2 data/val/fusion.jsonl || true
-echo "First lines (test):"; head -n 2 data/test/fusion.jsonl || true
+head -n 2 data/val/fusion.jsonl || true
+head -n 2 data/test/fusion.jsonl || true
