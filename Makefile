@@ -137,6 +137,18 @@ artifacts:
 	$(PY) scripts/generate_metrics_artifacts.py --pred $(TEST_PRED) --model $(MODEL)
 
 artifacts-all: calibrate artifacts
+# ---- Day-4 Data Pipeline ----
+ingest:
+	$(PY) -m src.ingest.epss_fetch --db
+	$(PY) -m src.ingest.kev_fetch --db
+
+data-day4:
+	$(PY) scripts/prepare_day4_data.py
+
+phase-4-fusion-build:
+	$(MAKE) build-fusion VAL_IN=data/val/iforest.jsonl TEST_IN=data/test/iforest.jsonl \
+	VAL_LABELS=data/val/labels.jsonl TEST_LABELS=data/test/labels.jsonl
+
 .PHONY: build-fusion
 build-fusion:
 	VAL_IN="$(VAL_IN)" TEST_IN="$(TEST_IN)" VAL_LABELS="$(VAL_LABELS)" TEST_LABELS="$(TEST_LABELS)" \
