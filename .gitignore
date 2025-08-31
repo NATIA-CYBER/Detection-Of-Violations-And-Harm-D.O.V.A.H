@@ -33,7 +33,6 @@ ENV/
 *.swo
 
 # Project specific
-*.csv
 *.json
 !parsed_log.schema.json
 !detections.schema.json
@@ -59,8 +58,6 @@ logs/
 # Other reports and data
 reports/*
 !reports/eda/
-data/
-!data/.gitkeep
 !tests/data/
 !tests/data/**/*
 
