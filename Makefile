@@ -1,4 +1,4 @@
-:# ==== Config ====
+# ==== Config ====
 -include .env
 export
 ENV ?= dovah
@@ -24,10 +24,10 @@ TEST_PRED ?= data/test/fusion.jsonl
 FP1K      ?= 5.0
 
 # Fusion builder defaults (override at call-site)
-VAL_IN     ?= sample_data/hdfs/val/events.jsonl
-TEST_IN    ?= sample_data/hdfs/test/events.jsonl
-VAL_LABELS ?= data/val/labels.jsonl
-TEST_LABELS?= data/test/labels.jsonl
+VAL_IN      ?= sample_data/hdfs/val/events.jsonl
+TEST_IN     ?= sample_data/hdfs/test/events.jsonl
+VAL_LABELS  ?= data/val/labels.jsonl
+TEST_LABELS ?= data/test/labels.jsonl
 
 REPORTS := reports/$(PHASE)
 METRICS := $(REPORTS)/metrics
@@ -41,7 +41,7 @@ IMG     := $(REPORTS)/img
         phase4-run phase4-accept phase4-test phase4-all \
         smoke-imports smoke-iforest smokes \
         calibrate artifacts artifacts-all \
-        ingest data-day4 build-fusion day4 fix-perms
+        ingest ingest-files ingest-db data-day4 build-fusion day4 fix-perms print-env
 
 help:
 	@echo "Targets:"
@@ -52,14 +52,18 @@ help:
 	@echo "  phase-test           - run unit tests for streaming features"
 	@echo "  phase-all            - run dirs + pipeline + acceptance + unit tests"
 	@echo "  streamlit-run        - run the Streamlit UI locally"
-	@echo "  migrate-day3-to-phase3 - move reports/day3 -> reports/phase3 (one-time)"
 	@echo "  smokes               - import + tiny IForest sanity (no DB)"
+	@echo "  ingest               - fetch EPSS/KEV to disk (data/security/*)"
+	@echo "  ingest-db            - load EPSS/KEV into Postgres (uses DATABASE_URL)"
 	@echo "  data-day4            - build val/test events+labels (scripts/prep_day4.py)"
 	@echo "  build-fusion         - run harness + join preds+labels -> fusion.jsonl"
 	@echo "  calibrate            - choose threshold on validation (writes docs/metrics/thresholds.json)"
 	@echo "  artifacts            - PR/ROC PNGs + metrics CSV on test (writes to docs/metrics/)"
 	@echo "  day4                 - data-day4 + build-fusion + calibrate + artifacts"
-	@echo ""
+
+print-env:
+	@echo "ENV=$(ENV)"
+	@echo "DATABASE_URL=$${DATABASE_URL}"
 
 env:
 	conda env update -f environment.yml --prune
@@ -136,6 +140,22 @@ smoke-iforest:
 
 smokes: smoke-imports smoke-iforest
 
+# ---- EPSS/KEV ingestion ----
+# Default 'ingest' writes to disk (no DB). Files land in data/security/.
+ingest: ingest-files
+
+ingest-files:
+	mkdir -p data/security
+	$(PY) -m src.ingest.epss_fetch --out data/security/epss_scores.csv
+	$(PY) -m src.ingest.kev_fetch  --out data/security/kev_entries.json
+	@echo "Wrote data/security/epss_scores.csv and data/security/kev_entries.json"
+
+# Loads into Postgres (requires DATABASE_URL with psycopg driver, NOT psycopg2)
+ingest-db:
+	@test -n "$${DATABASE_URL}" || { echo "Missing DATABASE_URL"; exit 2; }
+	$(PY) -m src.ingest.epss_fetch --db
+	$(PY) -m src.ingest.kev_fetch  --db
+
 # ---- Day-4 data prep (events + labels from your events file) ----
 data-day4:
 	$(PY) -m scripts.prep_day4 --events $(DATA) --val-ratio 0.5
@@ -160,5 +180,3 @@ artifacts-all: calibrate artifacts
 
 # ---- One-button Day-4 pipeline ----
 day4: data-day4 build-fusion artifacts-all
-:
-
