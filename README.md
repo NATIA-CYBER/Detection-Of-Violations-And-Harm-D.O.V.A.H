@@ -176,7 +176,29 @@ python -m src.models.log_lm.score
 # persists rows in detections with created_at for latency metrics
 python -m src.fusion.late_fusion
 ```
-##Day-4 evaluation files
+
+## Day-4 evaluation files (val/test + fusion)
+
+**Goal:** produce the two files the evaluation needs:
+
+- `data/val/fusion.jsonl`
+- `data/test/fusion.jsonl`
+
+They are built from **events** + **labels** via two steps: (1) prep val/test sets; (2) join predictions with labels.
+
+**Prep (from repo root):**
+```bash
+# Use your REAL data paths for a proper split:
+python -m scripts.prep_day4 \
+  --events /ABS/PATH/TO/your_events.jsonl \
+  --epss   /ABS/PATH/TO/epss_scores.csv \
+  --kev    /ABS/PATH/TO/kev_entries.json \
+  --val-end  2025-07-31T23:59:59Z \
+  --test-start 2025-08-01T00:00:00Z
+
+# If timestamps are messy, use a hash split instead:
+# python -m scripts.prep_day4 --events /PATH/events.jsonl --epss /PATH/epss.csv --kev /PATH/kev.json --val-ratio 0.5
+
 ##One-time setup/makes script executable
 chmod +x scripts/build_fusion.sh 
 
