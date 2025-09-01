@@ -180,3 +180,8 @@ artifacts-all: calibrate artifacts
 
 # ---- One-button Day-4 pipeline ----
 day4: data-day4 build-fusion artifacts-all
+
+.PHONY: db-doctor
+db-doctor:
+	scripts/db_doctor.sh
+
