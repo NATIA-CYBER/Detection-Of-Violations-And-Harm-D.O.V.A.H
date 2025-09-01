@@ -1,0 +1,182 @@
+[
+  {
+    "ts": "2025-08-31 23:08:14.829887+00:00",
+    "host": "1826bc9d9f8cec0a53ba9d527764e6ba8d6d88ec66ce3d3f9b51a08b41bc81b5",
+    "component": "NameNode",
+    "template_id": 1,
+    "session_id": "28891220d75adbb776b9c7a883e98bf38100de5b0d141a645c84b13fbe20bdb2",
+    "level": "INFO",
+    "labels": {
+      "cves": []
+    },
+    "schema_ver": "1.0.0"
+  },
+  {
+    "ts": "2025-08-31 23:08:14.833237+00:00",
+    "host": "d2d31bdad2996b8a02d19bd4ec66c981038e0e3bc373243dba0f879d47ab8c49",
+    "component": "DataNode",
+    "template_id": 2,
+    "session_id": "ed78422ec96bd412a86ae868c865e5f60865a5e0f1eaf13866ac299aa5909812",
+    "level": "INFO",
+    "labels": {
+      "cves": []
+    },
+    "schema_ver": "1.0.0"
+  },
+  {
+    "ts": "2025-08-31 23:08:14.833399+00:00",
+    "host": "804bcd826e2e0bd4028966b46d7fcc01a017c2c21ebdc5cdb12bf66209b24ea9",
+    "component": "DataNode",
+    "template_id": 2,
+    "session_id": "7b6b808337ff66b14bc51ba82d785263e0dd89be910021adec238d5aefbaf6e1",
+    "level": "INFO",
+    "labels": {
+      "cves": []
+    },
+    "schema_ver": "1.0.0"
+  },
+  {
+    "ts": "2025-08-31 23:08:19.330248+00:00",
+    "host": "1826bc9d9f8cec0a53ba9d527764e6ba8d6d88ec66ce3d3f9b51a08b41bc81b5",
+    "component": "NameNode",
+    "template_id": 3,
+    "session_id": "28891220d75adbb776b9c7a883e98bf38100de5b0d141a645c84b13fbe20bdb2",
+    "level": "INFO",
+    "labels": {
+      "cves": []
+    },
+    "schema_ver": "1.0.0"
+  },
+  {
+    "ts": "2025-08-31 23:08:22.933272+00:00",
+    "host": "d2d31bdad2996b8a02d19bd4ec66c981038e0e3bc373243dba0f879d47ab8c49",
+    "component": "DataNode",
+    "template_id": 4,
+    "session_id": "ed78422ec96bd412a86ae868c865e5f60865a5e0f1eaf13866ac299aa5909812",
+    "level": "WARN",
+    "labels": {
+      "cves": []
+    },
+    "schema_ver": "1.0.0"
+  },
+  {
+    "ts": "2025-08-31 23:08:27.880591+00:00",
+    "host": "1826bc9d9f8cec0a53ba9d527764e6ba8d6d88ec66ce3d3f9b51a08b41bc81b5",
+    "component": "NameNode",
+    "template_id": 5,
+    "session_id": "28891220d75adbb776b9c7a883e98bf38100de5b0d141a645c84b13fbe20bdb2",
+    "level": "ERROR",
+    "labels": {
+      "cves": []
+    },
+    "schema_ver": "1.0.0"
+  },
+  {
+    "ts": "2025-08-31 23:08:31.033433+00:00",
+    "host": "804bcd826e2e0bd4028966b46d7fcc01a017c2c21ebdc5cdb12bf66209b24ea9",
+    "component": "DataNode",
+    "template_id": 6,
+    "session_id": "7b6b808337ff66b14bc51ba82d785263e0dd89be910021adec238d5aefbaf6e1",
+    "level": "INFO",
+    "labels": {
+      "cves": []
+    },
+    "schema_ver": "1.0.0"
+  },
+  {
+    "ts": "2025-08-31 23:08:35.575913+00:00",
+    "host": "1826bc9d9f8cec0a53ba9d527764e6ba8d6d88ec66ce3d3f9b51a08b41bc81b5",
+    "component": "NameNode",
+    "template_id": 7,
+    "session_id": "28891220d75adbb776b9c7a883e98bf38100de5b0d141a645c84b13fbe20bdb2",
+    "level": "INFO",
+    "labels": {
+      "cves": []
+    },
+    "schema_ver": "1.0.0"
+  },
+  {
+    "ts": "2025-08-31 23:08:40.123333+00:00",
+    "host": "d2d31bdad2996b8a02d19bd4ec66c981038e0e3bc373243dba0f879d47ab8c49",
+    "component": "DataNode",
+    "template_id": 8,
+    "session_id": "ed78422ec96bd412a86ae868c865e5f60865a5e0f1eaf13866ac299aa5909812",
+    "level": "ERROR",
+    "labels": {
+      "cves": []
+    },
+    "schema_ver": "1.0.0"
+  },
+  {
+    "ts": "2025-08-31 23:08:42.501717+00:00",
+    "host": "1826bc9d9f8cec0a53ba9d527764e6ba8d6d88ec66ce3d3f9b51a08b41bc81b5",
+    "component": "NameNode",
+    "template_id": 9,
+    "session_id": "28891220d75adbb776b9c7a883e98bf38100de5b0d141a645c84b13fbe20bdb2",
+    "level": "WARN",
+    "labels": {
+      "cves": []
+    },
+    "schema_ver": "1.0.0"
+  },
+  {
+    "ts": "2025-08-31 23:08:47.413491+00:00",
+    "host": "804bcd826e2e0bd4028966b46d7fcc01a017c2c21ebdc5cdb12bf66209b24ea9",
+    "component": "DataNode",
+    "template_id": 10,
+    "session_id": "7b6b808337ff66b14bc51ba82d785263e0dd89be910021adec238d5aefbaf6e1",
+    "level": "INFO",
+    "labels": {
+      "cves": []
+    },
+    "schema_ver": "1.0.0"
+  },
+  {
+    "ts": "2025-08-31 23:08:51.094406+00:00",
+    "host": "d2d31bdad2996b8a02d19bd4ec66c981038e0e3bc373243dba0f879d47ab8c49",
+    "component": "DataNode",
+    "template_id": 11,
+    "session_id": "ed78422ec96bd412a86ae868c865e5f60865a5e0f1eaf13866ac299aa5909812",
+    "level": "INFO",
+    "labels": {
+      "cves": []
+    },
+    "schema_ver": "1.0.0"
+  },
+  {
+    "ts": "2025-08-31 23:08:53.234956+00:00",
+    "host": "1826bc9d9f8cec0a53ba9d527764e6ba8d6d88ec66ce3d3f9b51a08b41bc81b5",
+    "component": "NameNode",
+    "template_id": 12,
+    "session_id": "28891220d75adbb776b9c7a883e98bf38100de5b0d141a645c84b13fbe20bdb2",
+    "level": "INFO",
+    "labels": {
+      "cves": []
+    },
+    "schema_ver": "1.0.0"
+  },
+  {
+    "ts": "2025-08-31 23:08:57.655558+00:00",
+    "host": "804bcd826e2e0bd4028966b46d7fcc01a017c2c21ebdc5cdb12bf66209b24ea9",
+    "component": "DataNode",
+    "template_id": 13,
+    "session_id": "7b6b808337ff66b14bc51ba82d785263e0dd89be910021adec238d5aefbaf6e1",
+    "level": "INFO",
+    "labels": {
+      "cves": []
+    },
+    "schema_ver": "1.0.0"
+  },
+  {
+    "ts": "2025-08-31 23:08:58.394882+00:00",
+    "host": "1826bc9d9f8cec0a53ba9d527764e6ba8d6d88ec66ce3d3f9b51a08b41bc81b5",
+    "component": "NameNode",
+    "template_id": 14,
+    "session_id": "28891220d75adbb776b9c7a883e98bf38100de5b0d141a645c84b13fbe20bdb2",
+    "level": "INFO",
+    "labels": {
+      "cves": []
+    },
+    "schema_ver": "1.0.0"
+  }
+]
